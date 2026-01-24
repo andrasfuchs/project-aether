@@ -148,6 +148,58 @@ DEFAULT_KEYWORDS = {
             "autoteollisuus", "moottori", "palotila",
             "polttoaineen ruiskutus", "sylinterinkansi", "mäntä"
         ]
+    },
+    "German": {
+        "positive": [
+            "anomale Wärme", "überschüssige Energie", "Über-Einheit", "kalte Fusion",
+            "LENR", "LANR", "Transmutation", "Plasma-Wirbel", "Plasmoid",
+            "überschüssige Enthalpie", "nicht-chemische Wärme", "gitterunterstützt",
+            "kondensierte Materie Kernphysik", "Rydberg-Materie"
+        ],
+        "negative": [
+            "Zündkerze", "Zündsystem", "Verbrennungsmotor",
+            "Automobil", "Motor", "Brennkammer",
+            "Kraftstoffeinspritzung", "Zylinderkopf", "Kolben"
+        ]
+    },
+    "French": {
+        "positive": [
+            "chaleur anormale", "énergie excédentaire", "sur-unité", "fusion froide",
+            "LENR", "LANR", "transmutation", "vortex de plasma", "plasmoïde",
+            "enthalpie excédentaire", "chaleur non chimique", "assisté par réseau",
+            "matière nucléaire condensée", "matière de Rydberg"
+        ],
+        "negative": [
+            "bougie d'allumage", "système d'allumage", "combustion interne",
+            "automobile", "moteur", "chambre de combustion",
+            "injection de carburant", "culasse", "piston"
+        ]
+    },
+    "Hungarian": {
+        "positive": [
+            "rendellenes hő", "többlet energia", "túl-egység", "hidegfúzió",
+            "LENR", "LANR", "transzmutáció", "plazma örvény", "plazmoid",
+            "többlet entalpia", "nem-kémiai hő", "rács-asszisztált",
+            "kondenzált anyag magfizika", "Rydberg-anyag"
+        ],
+        "negative": [
+            "gyújtógyertya", "gyújtórendszer", "belső égésű motor",
+            "autóipari", "motor", "égéstér",
+            "üzemanyag-befecskendezés", "hengerfej", "dugattyú"
+        ]
+    },
+    "Danish": {
+        "positive": [
+            "anomal varme", "overskudsenergi", "over-enhed", "kold fusion",
+            "LENR", "LANR", "transmutation", "plasmahvirvel", "plasmoid",
+            "overskudsentalpi", "ikke-kemisk varme", "gitterassisteret",
+            "kondenseret stof kernefysik", "Rydberg-stof"
+        ],
+        "negative": [
+            "tændrør", "tændingssystem", "forbrændingsmotor",
+            "automobil", "motor", "forbrændingskammer",
+            "brændstofindsprøjtning", "cylinderhoved", "stempel"
+        ]
     }
 }
 
