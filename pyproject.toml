@@ -1,0 +1,56 @@
+[project]
+name = "project-aether"
+version = "0.1.0"
+description = "Agentic patent intelligence framework for anomalous hydrogen phenomena."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0" }
+authors = [
+    { name = "Andras Fuchs", email = "andras.fuchs@gmail.com" }
+]
+keywords = ["patent-analysis", "agentic-ai", "lenr", "streamlit", "mcp"]
+
+# Core dependencies for the Agentic Stack
+dependencies = [
+    # UI & Visualization
+    "streamlit>=1.40.0",
+    "pandas>=2.2.0",
+    
+    # AI & Agents
+    "langchain>=0.3.0",
+    "langchain-google-genai>=2.0.0",  # For Gemini Pro
+    "langgraph>=0.2.0",               # Crucial for Manager-Worker state loops
+    "mcp>=1.0.0",                     # Model Context Protocol SDK
+    
+    # Data & Storage
+    "lancedb>=0.17.0",                # Serverless Vector DB for embeddings
+    "pydantic>=2.9.0",                # Data validation
+    "pydantic-settings>=2.6.0",       # Environment management
+    
+    # Networking & Scraping (Async is key for speed)
+    "httpx>=0.27.0",                  # Modern async HTTP client
+    "tenacity>=9.0.0",                # For exponential backoff (API rate limits)
+    "beautifulsoup4>=4.12.0",         # For parsing HTML content
+    "playwright>=1.48.0",             # For the "Headless Verification" browser tool
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Development dependencies (Linting & Testing)
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",                    # Extremely fast linter (replaces flake8/black)
+    "mypy>=1.13.0"
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
