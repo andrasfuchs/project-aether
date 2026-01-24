@@ -13,6 +13,7 @@ from project_aether.tools.inpadoc import (
     StatusAnalysis,
     StatusSeverity,
 )
+from project_aether.core.keywords import DEFAULT_KEYWORDS, get_flattened_keywords
 
 logger = logging.getLogger("AnalystAgent")
 
@@ -61,30 +62,13 @@ class AnalystAgent:
     Performs forensic analysis and semantic scoring of patent data.
     """
     
-    def __init__(self):
+    def __init__(self, keyword_config: Optional[Dict] = None):
         self.logger = logger
         
-        # Keywords for anomalous detection
-        self.anomalous_keywords = {
-            # English
-            "anomalous heat", "excess energy", "over-unity", "cold fusion",
-            "LENR", "LANR", "transmutation", "plasma vortex", "plasmoid",
-            "excess enthalpy", "non-chemical heat", "lattice assisted",
-            "condensed matter nuclear", "Rydberg matter",
-            
-            # Russian (Cyrillic)
-            "аномальное тепловыделение", "избыточное энерговыделение",
-            "холодный синтез", "холодный ядерный синтез",
-            "трансмутация элементов", "плазменный вихрь",
-            "тлеющий разряд", "электролизная плазма",
-        }
-        
-        # Keywords indicating standard industrial applications (false positives)
-        self.false_positive_keywords = {
-            "spark plug", "ignition system", "internal combustion",
-            "automotive", "engine", "combustion chamber",
-            "fuel injection", "cylinder head", "piston",
-        }
+        if keyword_config:
+            self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(keyword_config)
+        else:
+            self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(DEFAULT_KEYWORDS)
         
         # High-value IPC/CPC classifications
         self.high_value_classifications = {

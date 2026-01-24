@@ -8,6 +8,8 @@ import logging
 from datetime import datetime, timedelta
 import time
 import asyncio
+import copy
+from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 # Configure logging
 logging.basicConfig(
@@ -172,6 +174,10 @@ st.markdown("""
 
 def main():
     """Main application entry point."""
+    
+    # Initialize Session State for Keywords if not present
+    if 'keyword_config' not in st.session_state:
+        st.session_state['keyword_config'] = copy.deepcopy(DEFAULT_KEYWORDS)
     
     # --- HEADER SECTION ---
     st.markdown("""
@@ -361,6 +367,54 @@ def main():
             relevance_threshold = st.slider("Relevance Threshold", 0, 100, 40)
             st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
+        st.markdown("---")
+        st.markdown("### 🔑 Keyword Intelligence Database")
+        st.info("Configure the lexicon used by the Analyst Agent to detect anomalies and filter false positives.")
+        
+        # Dynamic Keyword Editor
+        if 'keyword_config' in st.session_state:
+            kw_config = st.session_state['keyword_config']
+            
+            # Language Selector (Tabs)
+            languages = list(kw_config.keys())
+            if not languages:
+                st.warning("No languages configured.")
+            else:
+                lang_tabs = st.tabs([f"{l}" for l in languages])
+                
+                for lang, tab in zip(languages, lang_tabs):
+                    with tab:
+                        c1, c2 = st.columns(2)
+                        
+                        with c1:
+                            st.markdown(f"#### ✅ Positive Signals")
+                            st.caption("Terms indicating anomalous energy phenomena")
+                            current_pos = kw_config[lang].get('positive', [])
+                            new_pos = st.text_area(
+                                "Comma-separated values",
+                                value=", ".join(current_pos),
+                                height=300,
+                                key=f"pos_{lang}",
+                                label_visibility="collapsed"
+                            )
+                            # Update state
+                            kw_config[lang]['positive'] = [x.strip() for x in new_pos.split(",") if x.strip()]
+                            
+                        with c2:
+                            st.markdown(f"#### ❌ Negative Filters")
+                            st.caption("Terms indicating standard industrial technology")
+                            current_neg = kw_config[lang].get('negative', [])
+                            new_neg = st.text_area(
+                                "Comma-separated values",
+                                value=", ".join(current_neg),
+                                height=300,
+                                key=f"neg_{lang}",
+                                label_visibility="collapsed"
+                            )
+                            # Update state
+                            kw_config[lang]['negative'] = [x.strip() for x in new_neg.split(",") if x.strip()]
+
+
 
 def render_metric_card(label, value, subtext="", color="#00B4D8"):
     """Helper to render a custom HTML metric card"""
@@ -484,7 +538,9 @@ def run_patent_search(jurisdictions, start_date, end_date):
         time.sleep(1) # UX pacing
         
         connector = LensConnector()
-        analyst = AnalystAgent()
+        # Pass dynamic keywords to the analyst
+        keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
+        analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
         
         # 2. Search Phase
