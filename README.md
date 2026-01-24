@@ -103,26 +103,35 @@ uv run streamlit run src/app.py
 
 ```text
 project-aether/
+├── .env                   # Environment variables (API keys) - DO NOT COMMIT
 ├── .env.example           # Template for environment variables
-├── pyproject.toml         # defined dependencies (uv)
+├── .gitignore             # Git ignore patterns
+├── LICENSE                # AGPLv3 License
+├── pyproject.toml         # uv dependencies and project metadata
 ├── README.md              # Project documentation
 ├── uv.lock                # Lock file for reproducible builds
-├── src/
-│   ├── __init__.py
-│   ├── app.py             # Streamlit Entry Point
-│   ├── agents/            # Agent Definitions
-│   │   ├── manager.py     # Mission Orchestration
-│   │   ├── researcher.py  # API Interaction
-│   │   └── analyst.py     # Semantic Analysis & Scoring
-│   ├── core/
-│   │   ├── mcp_client.py  # Model Context Protocol Client
-│   │   └── config.py      # Configuration loader
-│   ├── tools/
-│   │   ├── lens_api.py    # Lens.org Wrapper
-│   │   └── inpadoc.py     # Legal Status Decoder
-│   └── utils/
-│       └── artifacts.py   # Artifact generation logic
-└── tests/                 # Pytest suite
+├── data/                  # Local data storage (SQLite, vectors)
+├── docs/
+│   └── implementation_plan.md  # Strategic implementation plan
+└── src/project_aether/
+    ├── __init__.py
+    ├── app.py             # Streamlit Entry Point (Mission Control)
+    ├── agents/            # Agent Definitions
+    │   ├── __init__.py
+    │   ├── manager.py     # Mission Orchestration
+    │   ├── researcher.py  # API Interaction (Lens.org)
+    │   └── analyst.py     # Semantic Analysis & Forensic Scoring
+    ├── core/              # Core Infrastructure
+    │   ├── __init__.py
+    │   ├── config.py      # Configuration management
+    │   └── mcp_client.py  # Model Context Protocol Client
+    ├── tools/             # External API Wrappers
+    │   ├── __init__.py
+    │   ├── lens_api.py    # Lens.org API Connector
+    │   └── inpadoc.py     # Legal Status Decoder (INPADOC codes)
+    └── utils/             # Utilities
+        ├── __init__.py
+        └── artifacts.py   # Artifact generation logic
 
 ```
 
