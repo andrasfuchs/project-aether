@@ -149,17 +149,3 @@ This project is licensed under the **GNU AGPLv3** - see the [LICENSE](https://ww
 ---
 
 *Built with skepticism and curiosity.*
-
-```
-
----
-
-### 4. Folder Structure Creation
-
-Since you are using `uv`, the structure is clean and modern. Here is the recommended file layout logic to get you started:
-
-1.  **Root:** `pyproject.toml` is your source of truth.
-2.  **`src/agents`:** Where the logic lives. Separate your concerns. The `manager.py` should not know how to make an HTTP request; it should only know how to ask `researcher.py` for data.
-3.  **`src/tools`:** This is where the strict API handling happens (the "Fact Grounding" layer). The `inpadoc.py` file is critical—this is where you map the `FC9A` codes mentioned in your plan.
-
-```
