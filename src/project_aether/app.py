@@ -38,12 +38,29 @@ st.markdown("""
     }
     
     /* Global Background Override (if needed beyond config) */
+    @keyframes gradient-shift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
     .stApp {
         background-color: #0F172A; /* Slate 900 */
         background-image: 
             radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
             radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
             radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+        background-size: 200% 200%;
+        animation: gradient-shift 15s ease infinite;
+        transition: background-image 0.5s ease;
+    }
+
+    /* Subtle change on hover */
+    .stApp:hover {
+        background-image: 
+            radial-gradient(at 10% 10%, hsla(253,16%,10%,1) 0, transparent 50%), 
+            radial-gradient(at 60% 10%, hsla(225,39%,35%,1) 0, transparent 50%), 
+            radial-gradient(at 90% 10%, hsla(339,49%,35%,1) 0, transparent 50%);
     }
 
     /* Custom Header Styles */
@@ -78,13 +95,13 @@ st.markdown("""
         border-radius: 12px;
         padding: 1.5rem;
         margin-bottom: 1rem;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     
     .glass-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-        border-color: rgba(255, 255, 255, 0.1);
+        transform: translateY(-4px);
+        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 180, 216, 0.2);
+        border-color: rgba(0, 180, 216, 0.5);
     }
 
     /* Metric Styling inside Cards */
@@ -120,17 +137,25 @@ st.markdown("""
     div.stButton > button {
         border-radius: 8px;
         font-weight: 600;
-        height: 3rem;
+        height: auto; /* Allow height to adjust */
+        padding: 0.8rem 2.5rem; /* Increased spacing */
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        border: none;
+        letter-spacing: 0.15em; /* Increased spacing */
+        border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
+        background-color: rgba(30, 41, 59, 0.5); /* Base color */
+        color: #F8FAFC;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: all 0.2s;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Smoother transition */
+        margin: 1rem 0; /* Add outer margin */
     }
 
     div.stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 180, 216, 0.3), 0 4px 6px -2px rgba(0, 180, 216, 0.1);
+        background-color: rgba(0, 180, 216, 0.2); /* Color change on hover */
+        border-color: #00B4D8;
+        color: #FFFFFF;
+        letter-spacing: 0.2em; /* Expand text slightly on hover */
     }
 
     /* Tab Styling */
