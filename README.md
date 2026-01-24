@@ -93,7 +93,7 @@ cp .env.example .env
 
 4. **Run the Mission Control:**
 ```bash
-uv run streamlit run src/app.py
+uv run streamlit run src/project_aether/app.py
 
 ```
 
