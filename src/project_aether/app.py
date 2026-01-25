@@ -18,6 +18,30 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ProjectAether")
 
+# Jurisdiction mapping: Display Name -> ISO Code(s)
+JURISDICTION_MAP = {
+    "All": "ALL",
+    "European Patents": "EP",
+    "China": "CN",
+    "Japan": "JP",
+    "United States": "US",
+    "Germany": "DE",
+    "Republic of Korea": "KR",
+    "United Kingdom": "GB",
+    "France": "FR",
+    "Canada": "CA",
+    "Russia": "RU",
+    "Poland": "PL",
+    "Romania": "RO",
+    "Czech Republic": "CZ",
+    "Netherlands": "NL",
+    "Spain": "ES",
+    "Italy": "IT",
+    "Sweden": "SE",
+    "Norway": "NO",
+    "Finland": "FI"
+}
+
 # Page configuration
 st.set_page_config(
     page_title="Project Aether | Mission Control",
@@ -244,14 +268,44 @@ def main():
         
         st.write("#### 🌍 Geographic Scope")
         
-        all_jurisdictions = ["RU", "PL", "RO", "CZ", "NL", "ES", "IT", "SE", "NO", "FI"]
+        # List of jurisdiction display names
+        jurisdiction_display_names = [
+            "All",
+            "European Patents",
+            "China",
+            "Japan",
+            "United States",
+            "Germany",
+            "Republic of Korea",
+            "United Kingdom",
+            "France",
+            "Canada",
+            "Russia",
+            "Poland",
+            "Romania",
+            "Czech Republic",
+            "Netherlands",
+            "Spain",
+            "Italy",
+            "Sweden",
+            "Norway",
+            "Finland"
+        ]
         
-        selected_jurisdictions = st.multiselect(
+        selected_jurisdiction_names = st.multiselect(
             "Target Jurisdictions",
-            options=all_jurisdictions,
-            default=["RU", "PL"],
+            options=jurisdiction_display_names,
+            default=["Russia", "Poland"],
             help="Multinational patent offices to surveil"
         )
+        
+        # Convert display names to ISO codes
+        if "All" in selected_jurisdiction_names:
+            # If "All" is selected, use all jurisdiction codes except "All" itself and "EP"
+            selected_jurisdictions = [code for name, code in JURISDICTION_MAP.items() 
+                                     if name not in ["All", "European Patents"]]
+        else:
+            selected_jurisdictions = [JURISDICTION_MAP[name] for name in selected_jurisdiction_names]
         
         st.markdown("---")
         
