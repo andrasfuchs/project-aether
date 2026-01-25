@@ -257,7 +257,7 @@ def main():
             "Lookback Window (Years)",
             min_value=0,
             max_value=50,
-            value=1,
+            value=0,
             help="Historical depth of the search. Set to 0 for infinite (no date filter)"
         )
         
@@ -298,7 +298,7 @@ def main():
         
         # Initialize previous selection in session state
         if 'prev_jurisdiction_selection' not in st.session_state:
-            st.session_state.prev_jurisdiction_selection = ["Russia", "Poland"]
+            st.session_state.prev_jurisdiction_selection = ["All"]
         
         selected_jurisdiction_names = st.multiselect(
             "Target Jurisdictions",
