@@ -189,10 +189,14 @@ st.markdown("""
 
     .stTabs [data-baseweb="tab"] {
         height: 3rem;
-        border-radius: 8px;
+        border-radius: 10% 10% 0% 0%;
         background-color: rgba(30, 41, 59, 0.5);
         color: #94A3B8;
         border: 1px solid transparent;        
+    }
+            
+    .stTabs [data-baseweb="tab"] p {
+        margin: 20px;
     }
 
     .stTabs [data-baseweb="tab"]:hover {
