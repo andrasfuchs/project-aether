@@ -149,7 +149,7 @@ class LensConnector:
     def build_anomalous_spark_query(
         self,
         jurisdictions: List[str],
-        start_date: str,
+        start_date: Optional[str],
         end_date: Optional[str] = None,
     ) -> Dict:
         """
@@ -158,7 +158,7 @@ class LensConnector:
         
         Args:
             jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"])
-            start_date: Start date in ISO format (YYYY-MM-DD)
+            start_date: Start date in ISO format (YYYY-MM-DD), or None for infinite lookback
             end_date: End date in ISO format. If None, uses today.
             
         Returns:
@@ -167,47 +167,52 @@ class LensConnector:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
+        # Build the base must clauses
+        must_clauses = [
+            # Must contain hydrogen-related terms
+            {
+                "bool": {
+                    "should": [
+                        {"match_phrase": {"abstract": "hydrogen"}},
+                        {"match_phrase": {"abstract": "deuterium"}},
+                        {"match_phrase": {"abstract": "protium"}},
+                    ]
+                }
+            },
+            # Must be in target jurisdictions
+            {
+                "terms": {
+                    "jurisdiction": jurisdictions
+                }
+            },
+            # Must be discontinued/withdrawn
+            {
+                "bool": {
+                    "should": [
+                        {"term": {"legal_status.patent_status": "DISCONTINUED"}},
+                        {"term": {"legal_status.patent_status": "WITHDRAWN"}},
+                        {"term": {"legal_status.patent_status": "REJECTED"}},
+                    ]
+                }
+            },
+        ]
+        
+        # Add date range filter only if start_date is provided (not infinite)
+        if start_date is not None:
+            must_clauses.append({
+                "range": {
+                    "legal_status.discontinued_date": {
+                        "gte": start_date,
+                        "lte": end_date,
+                    }
+                }
+            })
+        
         # Build the query following the implementation plan structure
         query = {
             "query": {
                 "bool": {
-                    "must": [
-                        # Must contain hydrogen-related terms
-                        {
-                            "bool": {
-                                "should": [
-                                    {"match_phrase": {"abstract": "hydrogen"}},
-                                    {"match_phrase": {"abstract": "deuterium"}},
-                                    {"match_phrase": {"abstract": "protium"}},
-                                ]
-                            }
-                        },
-                        # Must be in target jurisdictions
-                        {
-                            "terms": {
-                                "jurisdiction": jurisdictions
-                            }
-                        },
-                        # Must be discontinued/withdrawn in date range
-                        {
-                            "bool": {
-                                "should": [
-                                    {"term": {"legal_status.patent_status": "DISCONTINUED"}},
-                                    {"term": {"legal_status.patent_status": "WITHDRAWN"}},
-                                    {"term": {"legal_status.patent_status": "REJECTED"}},
-                                ]
-                            }
-                        },
-                        # Date range filter
-                        {
-                            "range": {
-                                "legal_status.discontinued_date": {
-                                    "gte": start_date,
-                                    "lte": end_date,
-                                }
-                            }
-                        },
-                    ],
+                    "must": must_clauses,
                     "should": [
                         # High priority: anomalous terminology
                         {"match_phrase": {"abstract": "anomalous heat"}},
@@ -255,7 +260,7 @@ class LensConnector:
     async def search_by_jurisdiction(
         self,
         jurisdiction: str,
-        start_date: str,
+        start_date: Optional[str],
         end_date: Optional[str] = None,
     ) -> Dict:
         """
@@ -263,7 +268,7 @@ class LensConnector:
         
         Args:
             jurisdiction: Single jurisdiction code (e.g., "RU")
-            start_date: Start date in ISO format
+            start_date: Start date in ISO format, or None for infinite lookback
             end_date: End date in ISO format
             
         Returns:

@@ -253,16 +253,20 @@ def main():
             help="Analysis will run up to this date"
         )
         
-        days_back = st.slider(
-            "Lookback Window (Days)",
-            min_value=1,
-            max_value=30,
-            value=7,
-            help="Historical depth of the search"
+        years_back = st.slider(
+            "Lookback Window (Years)",
+            min_value=0,
+            max_value=50,
+            value=1,
+            help="Historical depth of the search. Set to 0 for infinite (no date filter)"
         )
         
-        start_date = end_date - timedelta(days=days_back)
-        st.caption(f"🏁 Window: `{start_date}` to `{end_date}`")
+        if years_back == 0:
+            start_date = None
+            st.caption(f"🏁 Window: `Infinite (No Date Filter)` to `{end_date}`")
+        else:
+            start_date = end_date - timedelta(days=years_back * 365)
+            st.caption(f"🏁 Window: `{start_date}` to `{end_date}`")
         
         st.markdown("---")
         
@@ -639,7 +643,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 result = asyncio.run(
                     connector.search_by_jurisdiction(
                         jurisdiction=juris,
-                        start_date=start_date.strftime("%Y-%m-%d"),
+                        start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                         end_date=end_date.strftime("%Y-%m-%d"),
                     )
                 )
