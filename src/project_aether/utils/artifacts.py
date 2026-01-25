@@ -379,8 +379,15 @@ class ArtifactGenerator:
         if isinstance(applicants_data, list):
             for app in applicants_data:
                 if isinstance(app, dict):
-                    name = app.get("extracted_name", {}).get("name", app.get("name", "Unknown"))
-                    if name:
+                    # Try multiple fields where name might be
+                    name = None
+                    if "extracted_name" in app and isinstance(app["extracted_name"], dict):
+                        name = app["extracted_name"].get("name")
+                    if not name:
+                        name = app.get("name")
+                    if not name:
+                        name = app.get("full_name")
+                    if name and isinstance(name, str):
                         applicants.append(name)
         
         # Extract inventors from nested structure
@@ -389,8 +396,15 @@ class ArtifactGenerator:
         if isinstance(inventors_data, list):
             for inv in inventors_data:
                 if isinstance(inv, dict):
-                    name = inv.get("extracted_name", {}).get("name", inv.get("name", "Unknown"))
-                    if name:
+                    # Try multiple fields where name might be
+                    name = None
+                    if "extracted_name" in inv and isinstance(inv["extracted_name"], dict):
+                        name = inv["extracted_name"].get("name")
+                    if not name:
+                        name = inv.get("name")
+                    if not name:
+                        name = inv.get("full_name")
+                    if name and isinstance(name, str):
                         inventors.append(name)
         
         # Get dates

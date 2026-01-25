@@ -134,11 +134,18 @@ class AnalystAgent:
         if isinstance(inventors_data, list):
             for inv in inventors_data:
                 if isinstance(inv, dict):
-                    name = inv.get("extracted_name", {}).get("name", inv.get("name", ""))
-                    if name:
+                    # Try multiple fields where name might be
+                    name = None
+                    if "extracted_name" in inv and isinstance(inv["extracted_name"], dict):
+                        name = inv["extracted_name"].get("name")
+                    if not name:
+                        name = inv.get("name")
+                    if not name:
+                        name = inv.get("full_name")
+                    if name and isinstance(name, str):
                         inventors.append(name)
         
-        logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction})")
+        logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction}) - Inventors: {len(inventors)}")
         
         # 1. Legal Status Forensics
         status_analysis = analyze_legal_status(patent_record)
