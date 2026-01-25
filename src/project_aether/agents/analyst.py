@@ -18,6 +18,30 @@ from project_aether.core.keywords import DEFAULT_KEYWORDS, get_flattened_keyword
 logger = logging.getLogger("AnalystAgent")
 
 
+def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
+    """
+    Safely extract nested field from dictionary using dot notation.
+    
+    Args:
+        data: Dictionary to extract from
+        path: Dot-separated path (e.g., 'biblio.invention_title')
+        default: Default value if path not found
+        
+    Returns:
+        Extracted value or default
+    """
+    keys = path.split('.')
+    current = data
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+            if current is None:
+                return default
+        else:
+            return default
+    return current if current is not None else default
+
+
 @dataclass
 class PatentAssessment:
     """
@@ -27,6 +51,7 @@ class PatentAssessment:
     jurisdiction: str
     doc_number: str
     title: str
+    inventors: List[str]  # List of inventor names
     
     # Legal analysis
     status_analysis: StatusAnalysis
@@ -47,6 +72,7 @@ class PatentAssessment:
             "jurisdiction": self.jurisdiction,
             "doc_number": self.doc_number,
             "title": self.title,
+            "inventors": self.inventors,
             "status_analysis": self.status_analysis.to_dict(),
             "relevance_score": self.relevance_score,
             "is_anomalous": self.is_anomalous,
@@ -92,7 +118,25 @@ class AnalystAgent:
         lens_id = patent_record.get("lens_id", "UNKNOWN")
         jurisdiction = patent_record.get("jurisdiction", "UNKNOWN")
         doc_number = patent_record.get("doc_number", "UNKNOWN")
-        title = patent_record.get("title", "Untitled")
+        
+        # Extract title from nested structure
+        title_data = _safe_get_nested(patent_record, "biblio.invention_title")
+        if isinstance(title_data, list) and len(title_data) > 0:
+            title = title_data[0].get("text", "Untitled")
+        elif isinstance(title_data, str):
+            title = title_data
+        else:
+            title = "Untitled"
+        
+        # Extract inventors from nested structure
+        inventors_data = _safe_get_nested(patent_record, "biblio.parties.inventors", [])
+        inventors = []
+        if isinstance(inventors_data, list):
+            for inv in inventors_data:
+                if isinstance(inv, dict):
+                    name = inv.get("extracted_name", {}).get("name", inv.get("name", ""))
+                    if name:
+                        inventors.append(name)
         
         logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction})")
         
@@ -100,8 +144,20 @@ class AnalystAgent:
         status_analysis = analyze_legal_status(patent_record)
         
         # 2. Semantic Analysis
-        abstract = patent_record.get("abstract", "")
-        claims = patent_record.get("claims", "")
+        # Extract abstract (can be array or string)
+        abstract_data = patent_record.get("abstract", "")
+        if isinstance(abstract_data, list) and len(abstract_data) > 0:
+            abstract = abstract_data[0].get("text", "") if isinstance(abstract_data[0], dict) else str(abstract_data[0])
+        else:
+            abstract = str(abstract_data) if abstract_data else ""
+        
+        # Extract claims (can be array or string)
+        claims_data = patent_record.get("claims", "")
+        if isinstance(claims_data, list) and len(claims_data) > 0:
+            claims = claims_data[0].get("text", "") if isinstance(claims_data[0], dict) else str(claims_data[0])
+        else:
+            claims = str(claims_data) if claims_data else ""
+        
         full_text = f"{title} {abstract} {claims}".lower()
         
         relevance_score = self._calculate_relevance_score(full_text)
@@ -129,6 +185,7 @@ class AnalystAgent:
             jurisdiction=jurisdiction,
             doc_number=doc_number,
             title=title,
+            inventors=inventors,
             status_analysis=status_analysis,
             relevance_score=relevance_score,
             is_anomalous=is_anomalous,
@@ -207,20 +264,22 @@ class AnalystAgent:
         """
         tags = []
         
-        # Check IPC classifications
-        ipcr = patent_record.get("classifications_ipcr", [])
+        # Check IPC classifications (nested in biblio)
+        ipcr = _safe_get_nested(patent_record, "biblio.classifications_ipcr", [])
         for classification in ipcr:
-            symbol = classification.get("symbol", "")
-            # Extract main group (e.g., "G21B 3/00")
-            if any(hv in symbol for hv in self.high_value_classifications):
-                tags.append(symbol)
+            if isinstance(classification, dict):
+                symbol = classification.get("symbol", "")
+                # Extract main group (e.g., "G21B 3/00")
+                if any(hv in symbol for hv in self.high_value_classifications):
+                    tags.append(symbol)
         
-        # Check CPC classifications
-        cpc = patent_record.get("classifications_cpc", [])
+        # Check CPC classifications (nested in biblio)
+        cpc = _safe_get_nested(patent_record, "biblio.classifications_cpc", [])
         for classification in cpc:
-            symbol = classification.get("symbol", "")
-            if any(hv in symbol for hv in self.high_value_classifications):
-                tags.append(symbol)
+            if isinstance(classification, dict):
+                symbol = classification.get("symbol", "")
+                if any(hv in symbol for hv in self.high_value_classifications):
+                    tags.append(symbol)
         
         return list(set(tags))  # Remove duplicates
     

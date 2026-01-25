@@ -393,7 +393,9 @@ def main():
             for a in assessments:
                 row = {
                     "Lens ID": a.lens_id,
+                    "Patent #": a.doc_number,
                     "Title": a.title,
+                    "Inventor(s)": ", ".join(a.inventors) if a.inventors else "Unknown",
                     "Jurisdiction": a.jurisdiction,
                     "Intelligence": a.intelligence_value,
                     "Score": f"{a.relevance_score:.1f}",

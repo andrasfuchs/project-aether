@@ -13,6 +13,30 @@ from dataclasses import dataclass, asdict
 logger = logging.getLogger("Artifacts")
 
 
+def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
+    """
+    Safely extract nested field from dictionary using dot notation.
+    
+    Args:
+        data: Dictionary to extract from
+        path: Dot-separated path (e.g., 'biblio.invention_title')
+        default: Default value if path not found
+        
+    Returns:
+        Extracted value or default
+    """
+    keys = path.split('.')
+    current = data
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+            if current is None:
+                return default
+        else:
+            return default
+    return current if current is not None else default
+
+
 @dataclass
 class DashboardArtifact:
     """
@@ -349,22 +373,37 @@ class ArtifactGenerator:
         Returns:
             DeepDiveArtifact
         """
-        # Extract applicants
-        applicants = [
-            app.get("name", "Unknown")
-            for app in patent_data.get("applicants", [])
-        ]
+        # Extract applicants from nested structure
+        applicants_data = _safe_get_nested(patent_data, "biblio.parties.applicants", [])
+        applicants = []
+        if isinstance(applicants_data, list):
+            for app in applicants_data:
+                if isinstance(app, dict):
+                    name = app.get("extracted_name", {}).get("name", app.get("name", "Unknown"))
+                    if name:
+                        applicants.append(name)
         
-        # Extract inventors
-        inventors = [
-            inv.get("name", "Unknown")
-            for inv in patent_data.get("inventors", [])
-        ]
+        # Extract inventors from nested structure
+        inventors_data = _safe_get_nested(patent_data, "biblio.parties.inventors", [])
+        inventors = []
+        if isinstance(inventors_data, list):
+            for inv in inventors_data:
+                if isinstance(inv, dict):
+                    name = inv.get("extracted_name", {}).get("name", inv.get("name", "Unknown"))
+                    if name:
+                        inventors.append(name)
         
         # Get dates
         date_published = patent_data.get("date_published")
         legal_status = patent_data.get("legal_status", {})
         date_discontinued = legal_status.get("discontinued_date")
+        
+        # Extract abstract (can be array or string)
+        abstract_data = patent_data.get("abstract", "No abstract available")
+        if isinstance(abstract_data, list) and len(abstract_data) > 0:
+            abstract = abstract_data[0].get("text", "No abstract available") if isinstance(abstract_data[0], dict) else str(abstract_data[0])
+        else:
+            abstract = str(abstract_data) if abstract_data else "No abstract available"
         
         artifact = DeepDiveArtifact(
             lens_id=assessment.get("lens_id", "UNKNOWN"),
@@ -375,7 +414,7 @@ class ArtifactGenerator:
             relevance_score=assessment.get("relevance_score", 0.0),
             intelligence_value=assessment.get("intelligence_value", "LOW"),
             classification_tags=assessment.get("classification_tags", []),
-            abstract=patent_data.get("abstract", "No abstract available"),
+            abstract=abstract,
             rejection_reason=assessment.get("status_analysis", {}).get(
                 "refusal_reason", "Unknown"
             ),
