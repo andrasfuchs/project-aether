@@ -360,9 +360,9 @@ def main():
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
     # --- MAIN CONTENT TABS ---
-    tab_dashboard, tab_matrix, tab_deepdive, tab_settings = st.tabs([
+    tab_dashboard, tab_results, tab_deepdive, tab_settings = st.tabs([
         "Dashboard",
-        "Rejection Matrix",
+        "Search Results",
         "Detailed Analysis",
         "Settings"
     ])
@@ -386,9 +386,9 @@ def main():
                 # Show placeholder dashboard
                 show_placeholder_dashboard()
     
-    # --- MATRIX TAB ---
-    with tab_matrix:
-        st.markdown("### Rejection Matrix")
+    # --- RESULTS TAB ---
+    with tab_results:
+        st.markdown("### Search Results")
         
         assessments = st.session_state.get('assessments')
         if assessments:
@@ -429,7 +429,7 @@ def main():
                 }
             )
         else:
-            st.info("No results yet. Run an analysis to populate the matrix.")
+            st.info("No results yet. Run an analysis to populate the table.")
 
     # --- DEEP DIVE TAB ---
     with tab_deepdive:
