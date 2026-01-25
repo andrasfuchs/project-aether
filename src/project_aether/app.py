@@ -44,7 +44,7 @@ JURISDICTION_MAP = {
 
 # Page configuration
 st.set_page_config(
-    page_title="Project Aether | Mission Control",
+    page_title="Project Aether",
     page_icon="🌌",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -192,7 +192,7 @@ st.markdown("""
         border-radius: 8px;
         background-color: rgba(30, 41, 59, 0.5);
         color: #94A3B8;
-        border: 1px solid transparent;
+        border: 1px solid transparent;        
     }
 
     .stTabs [data-baseweb="tab"]:hover {
@@ -231,20 +231,20 @@ def main():
     # --- HEADER SECTION ---
     st.markdown("""
     <div class="header-container">
-        <div class="main-title">Project Aether 🔭</div>
-        <div class="subtitle">AGENTIC PATENT INTELLIGENCE FRAMEWORK // EXPLORING THE NEGATIVE SPACE OF INNOVATION</div>
+        <div class="main-title">Project Aether</div>
+        <div class="subtitle">EXPLORING THE SPACE OF INNOVATION</div>
     </div>
     """, unsafe_allow_html=True)
     
     # --- SIDEBAR CONFIGURATION ---
     with st.sidebar:
         st.markdown(
-            "<h2 style='text-align: center; color: #00B4D8;'>⚙️ MISSION CONTROL</h2>", 
+            "<h2 style='text-align: center; color: #00B4D8;'>FILTERS</h2>", 
             unsafe_allow_html=True
         )
         st.markdown("---")
         
-        st.write("#### 📅 Temporal Scope")
+        st.write("#### Temporal Scope")
         
         # Date range selection
         end_date = st.date_input(
@@ -263,14 +263,14 @@ def main():
         
         if years_back == 0:
             start_date = None
-            st.caption(f"🏁 Window: `Infinite (No Date Filter)` to `{end_date}`")
+            st.caption(f"Window: `Infinite (No Date Filter)` to `{end_date}`")
         else:
             start_date = end_date - timedelta(days=years_back * 365)
-            st.caption(f"🏁 Window: `{start_date}` to `{end_date}`")
+            st.caption(f"Window: `{start_date}` to `{end_date}`")
         
         st.markdown("---")
         
-        st.write("#### 🌍 Geographic Scope")
+        st.write("#### Geographic Scope")
         
         # List of jurisdiction display names
         jurisdiction_display_names = [
@@ -332,35 +332,35 @@ def main():
         
         col_btn, _ = st.columns([1, 0.1])
         with col_btn:
-            run_mission = st.button("🚀 INITIATE SEQUENCE", type="primary", use_container_width=True)
+            run_mission = st.button("Run Analysis", type="primary", use_container_width=True)
         
         st.markdown("---")
         
         # System Status in Sidebar
-        st.write("#### 📡 Uplink Status")
+        st.write("#### Connectivity")
         
         from project_aether.core.config import get_config
         config = get_config()
         
         if config.is_lens_configured:
-            st.markdown('<div class="status-badge status-ok">● Lens.org API Active</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-ok">Lens.org API Active</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="status-badge status-err">● Lens.org API Offline</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-err">Lens.org API Offline</div>', unsafe_allow_html=True)
             st.caption("Missing `LENS_ORG_API_TOKEN`")
         
         st.write("") # Spacer
         
         if config.is_llm_configured:
-            st.markdown('<div class="status-badge status-ok">● Neural Engine Active</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-ok">Neural Engine Active</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="status-badge status-warn">● Neural Engine Offline</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-warn">Neural Engine Offline</div>', unsafe_allow_html=True)
 
     # --- MAIN CONTENT TABS ---
     tab_dashboard, tab_matrix, tab_deepdive, tab_settings = st.tabs([
-        "📊 INTELLIGENCE DASHBOARD",
-        "📋 REJECTION MATRIX",
-        "🔬 DEEP DIVE FORENSICS",
-        "⚙️ CORE SETTINGS"
+        "INTELLIGENCE DASHBOARD",
+        "REJECTION MATRIX",
+        "DEEP DIVE FORENSICS",
+        "CORE SETTINGS"
     ])
     
     # --- DASHBOARD TAB ---
@@ -368,9 +368,9 @@ def main():
         if run_mission:
             # Check if jurisdictions are selected (None is valid for "All", but empty selection is not)
             if not selected_jurisdiction_names:
-                st.error("⚠️ Mission Aborted: No Jurisdictions Selected")
+                st.error("Mission aborted: no jurisdictions selected")
             elif not config.is_lens_configured:
-                st.error("⚠️ Mission Aborted: Lens.org API Disconnected")
+                st.error("Mission aborted: Lens.org API disconnected")
             else:
                 run_patent_search(selected_jurisdictions, start_date, end_date)
         else:
@@ -384,7 +384,7 @@ def main():
     
     # --- MATRIX TAB ---
     with tab_matrix:
-        st.markdown("### 📋 The Rejection Matrix")
+        st.markdown("### Rejection Matrix")
         
         assessments = st.session_state.get('assessments')
         if assessments:
@@ -429,7 +429,7 @@ def main():
 
     # --- DEEP DIVE TAB ---
     with tab_deepdive:
-        st.markdown("### 🔬 Forensic Analysis")
+        st.markdown("### Forensic Analysis")
         assessments = st.session_state.get('assessments')
         
         if assessments:
@@ -450,14 +450,14 @@ def main():
 
     # --- SETTINGS TAB ---
     with tab_settings:
-        st.markdown("### ⚙️ System Parameters")
+        st.markdown("### System Parameters")
         
         col1, col2 = st.columns(2)
         
         with col1:
             st.markdown("""
             <div class="glass-card">
-                <h4>📡 API Handlers</h4>
+                <h4>API Handlers</h4>
                 <p>Configure external connections.</p>
             </div>
             """, unsafe_allow_html=True)
@@ -465,7 +465,7 @@ def main():
         with col2:
             st.markdown("""
             <div class="glass-card">
-                <h4>🧠 Model Parameters</h4>
+                <h4>Model Parameters</h4>
                 <p>Fine-tune relevance thresholds.</p>
             </div>
             """, unsafe_allow_html=True)
@@ -474,7 +474,7 @@ def main():
             st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
         st.markdown("---")
-        st.markdown("### 🔑 Keyword Intelligence Database")
+        st.markdown("### Keyword Intelligence Database")
         st.info("Configure the lexicon used by the Analyst Agent to detect anomalies and filter false positives.")
         
         # Dynamic Keyword Editor
@@ -493,7 +493,7 @@ def main():
                         c1, c2 = st.columns(2)
                         
                         with c1:
-                            st.markdown(f"#### ✅ Positive Signals")
+                            st.markdown(f"#### Positive Signals")
                             st.caption("Terms indicating anomalous energy phenomena")
                             current_pos = kw_config[lang].get('positive', [])
                             new_pos = st.text_area(
@@ -507,7 +507,7 @@ def main():
                             kw_config[lang]['positive'] = [x.strip() for x in new_pos.split(",") if x.strip()]
                             
                         with c2:
-                            st.markdown(f"#### ❌ Negative Filters")
+                            st.markdown(f"#### Negative Filters")
                             st.caption("Terms indicating standard industrial technology")
                             current_neg = kw_config[lang].get('negative', [])
                             new_neg = st.text_area(
@@ -535,7 +535,7 @@ def render_metric_card(label, value, subtext="", color="#00B4D8"):
 def show_placeholder_dashboard():
     """Display modern placeholder dashboard."""
     
-    st.markdown("### 📊 Mission Status: IDLE")
+    st.markdown("### Mission Status: Idle")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -563,7 +563,7 @@ def show_placeholder_dashboard():
 
 def render_dashboard_metrics(dashboard):
     """Render the dashboard with actual data."""
-    st.markdown(f"### 📊 Mission Status: COMPLETED ({dashboard.mission_id})")
+    st.markdown(f"### Mission Status: Completed ({dashboard.mission_id})")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -576,7 +576,7 @@ def render_dashboard_metrics(dashboard):
     with col4:
         render_metric_card("Anomalous", dashboard.anomalous_count, "Plasma Signatures", "#00B4D8")
         
-    st.markdown("### 🏆 Top Jurisdictions")
+    st.markdown("### Top Jurisdictions")
     # Simple bar chart using st.bar_chart if we had the breakdown, for now just text
     if dashboard.top_jurisdiction:
         st.info(f"Most activity detected in territory: **{dashboard.top_jurisdiction}**")
@@ -601,17 +601,17 @@ def render_deep_dive(assessment):
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("#### 📄 Abstract")
+        st.markdown("#### Abstract")
         patent_data = next((p for p in st.session_state.get('all_raw_results', []) if p.get('lens_id') == assessment.lens_id), {})
         abstract_text = patent_data.get('abstract', 'No abstract available')
         st.info(abstract_text)
         
-        st.markdown("#### ⚖️ Legal Status Forensics")
+        st.markdown("#### Legal Status Forensics")
         st.write(f"**Interpretation:** {assessment.status_analysis.interpretation}")
         st.write(f"**Refusal Reason:** {assessment.status_analysis.refusal_reason}")
     
     with col2:
-        st.markdown("#### 🧠 AI Analysis")
+        st.markdown("#### AI Analysis")
         st.progress(assessment.relevance_score / 100, text=f"Relevance: {assessment.relevance_score:.1f}%")
         
         st.markdown("**Tags:**")
@@ -623,7 +623,7 @@ def render_deep_dive(assessment):
             
         st.markdown("**Anomalous Features:**")
         if assessment.is_anomalous:
-            st.markdown("⚡ `Anomalous Heat`")
+            st.markdown("`Anomalous Heat`")
         else:
             st.caption("None detected")
 
@@ -640,7 +640,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
         from project_aether.utils.artifacts import ArtifactGenerator
         
         # 1. Initialization
-        status_container.info("🕵️ Manager Agent: Initializing mission parameters...")
+        status_container.info("Manager Agent: Initializing mission parameters...")
         time.sleep(1) # UX pacing
         
         connector = LensConnector()
@@ -658,7 +658,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
             current_step = 1
             progress_bar.progress(33)
             
-            status_container.markdown(f"📡 **Researcher Agent:** Scanning all jurisdictions (no filter)...")
+            status_container.markdown(f"Researcher Agent: Scanning all jurisdictions (no filter)...")
             
             try:
                 result = asyncio.run(
@@ -683,7 +683,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 progress = int((current_step / total_steps) * 100)
                 progress_bar.progress(progress)
                 
-                status_container.markdown(f"📡 **Researcher Agent:** Scanning jurisdiction `{juris}`...")
+                status_container.markdown(f"Researcher Agent: Scanning jurisdiction `{juris}`...")
                 
                 # Async run
                 try:
