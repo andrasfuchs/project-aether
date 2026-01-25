@@ -388,9 +388,12 @@ def main():
         
         assessments = st.session_state.get('assessments')
         if assessments:
+            # Sort assessments by relevance_score descending
+            sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
+            
             # Prepare data for dataframe
             data = []
-            for a in assessments:
+            for a in sorted_assessments:
                 row = {
                     "Lens ID": a.lens_id,
                     "Patent #": a.doc_number,
