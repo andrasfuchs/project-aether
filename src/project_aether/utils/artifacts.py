@@ -382,7 +382,7 @@ class ArtifactGenerator:
                     # Try multiple fields where name might be
                     name = None
                     if "extracted_name" in app and isinstance(app["extracted_name"], dict):
-                        name = app["extracted_name"].get("name")
+                        name = app["extracted_name"].get("value")  # Changed from 'name' to 'value'
                     if not name:
                         name = app.get("name")
                     if not name:
@@ -399,7 +399,7 @@ class ArtifactGenerator:
                     # Try multiple fields where name might be
                     name = None
                     if "extracted_name" in inv and isinstance(inv["extracted_name"], dict):
-                        name = inv["extracted_name"].get("name")
+                        name = inv["extracted_name"].get("value")  # Changed from 'name' to 'value'
                     if not name:
                         name = inv.get("name")
                     if not name:

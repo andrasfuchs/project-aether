@@ -131,13 +131,14 @@ class AnalystAgent:
         # Extract inventors from nested structure
         inventors_data = _safe_get_nested(patent_record, "biblio.parties.inventors", [])
         inventors = []
+        
         if isinstance(inventors_data, list):
             for inv in inventors_data:
                 if isinstance(inv, dict):
                     # Try multiple fields where name might be
                     name = None
                     if "extracted_name" in inv and isinstance(inv["extracted_name"], dict):
-                        name = inv["extracted_name"].get("name")
+                        name = inv["extracted_name"].get("value")  # Changed from 'name' to 'value'
                     if not name:
                         name = inv.get("name")
                     if not name:
@@ -145,7 +146,7 @@ class AnalystAgent:
                     if name and isinstance(name, str):
                         inventors.append(name)
         
-        logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction}) - Inventors: {len(inventors)}")
+        logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction}) - Inventors found: {inventors}")
         
         # 1. Legal Status Forensics
         status_analysis = analyze_legal_status(patent_record)
