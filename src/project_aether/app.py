@@ -45,7 +45,7 @@ JURISDICTION_MAP = {
 # Page configuration
 st.set_page_config(
     page_title="Project Aether",
-    page_icon="🌌",
+    page_icon="A",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -232,14 +232,14 @@ def main():
     st.markdown("""
     <div class="header-container">
         <div class="main-title">Project Aether</div>
-        <div class="subtitle">EXPLORING THE SPACE OF INNOVATION</div>
+        <div class="subtitle">Patent intelligence and analysis</div>
     </div>
     """, unsafe_allow_html=True)
     
     # --- SIDEBAR CONFIGURATION ---
     with st.sidebar:
         st.markdown(
-            "<h2 style='text-align: center; color: #00B4D8;'>FILTERS</h2>", 
+            "<h2 style='text-align: center; color: #00B4D8;'>Filters</h2>",
             unsafe_allow_html=True
         )
         st.markdown("---")
@@ -351,16 +351,16 @@ def main():
         st.write("") # Spacer
         
         if config.is_llm_configured:
-            st.markdown('<div class="status-badge status-ok">Neural Engine Active</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-ok">LLM service connected</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="status-badge status-warn">Neural Engine Offline</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
     # --- MAIN CONTENT TABS ---
     tab_dashboard, tab_matrix, tab_deepdive, tab_settings = st.tabs([
-        "INTELLIGENCE DASHBOARD",
-        "REJECTION MATRIX",
-        "DEEP DIVE FORENSICS",
-        "CORE SETTINGS"
+        "Dashboard",
+        "Rejection Matrix",
+        "Detailed Analysis",
+        "Settings"
     ])
     
     # --- DASHBOARD TAB ---
@@ -368,9 +368,9 @@ def main():
         if run_mission:
             # Check if jurisdictions are selected (None is valid for "All", but empty selection is not)
             if not selected_jurisdiction_names:
-                st.error("Mission aborted: no jurisdictions selected")
+                st.error("Analysis aborted: no jurisdictions selected")
             elif not config.is_lens_configured:
-                st.error("Mission aborted: Lens.org API disconnected")
+                st.error("Analysis aborted: Lens.org API disconnected")
             else:
                 run_patent_search(selected_jurisdictions, start_date, end_date)
         else:
@@ -425,11 +425,11 @@ def main():
                 }
             )
         else:
-            st.info("No active intelligence data. Launch a mission to populate the matrix.")
+            st.info("No results yet. Run an analysis to populate the matrix.")
 
     # --- DEEP DIVE TAB ---
     with tab_deepdive:
-        st.markdown("### Forensic Analysis")
+        st.markdown("### Detailed Analysis")
         assessments = st.session_state.get('assessments')
         
         if assessments:
@@ -446,7 +446,7 @@ def main():
             if target:
                 render_deep_dive(target)
         else:
-            st.info("Awaiting mission data for forensic analysis.")
+            st.info("No analysis data available yet.")
 
     # --- SETTINGS TAB ---
     with tab_settings:
@@ -457,8 +457,8 @@ def main():
         with col1:
             st.markdown("""
             <div class="glass-card">
-                <h4>API Handlers</h4>
-                <p>Configure external connections.</p>
+                <h4>API Connections</h4>
+                <p>Manage external services.</p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -474,8 +474,8 @@ def main():
             st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
         st.markdown("---")
-        st.markdown("### Keyword Intelligence Database")
-        st.info("Configure the lexicon used by the Analyst Agent to detect anomalies and filter false positives.")
+        st.markdown("### Keyword Database")
+        st.info("Configure the lexicon used to detect anomalies and filter false positives.")
         
         # Dynamic Keyword Editor
         if 'keyword_config' in st.session_state:
@@ -493,7 +493,7 @@ def main():
                         c1, c2 = st.columns(2)
                         
                         with c1:
-                            st.markdown(f"#### Positive Signals")
+                            st.markdown(f"#### Include Keywords")
                             st.caption("Terms indicating anomalous energy phenomena")
                             current_pos = kw_config[lang].get('positive', [])
                             new_pos = st.text_area(
@@ -503,11 +503,10 @@ def main():
                                 key=f"pos_{lang}",
                                 label_visibility="collapsed"
                             )
-                            # Update state
                             kw_config[lang]['positive'] = [x.strip() for x in new_pos.split(",") if x.strip()]
                             
                         with c2:
-                            st.markdown(f"#### Negative Filters")
+                            st.markdown(f"#### Exclude Keywords")
                             st.caption("Terms indicating standard industrial technology")
                             current_neg = kw_config[lang].get('negative', [])
                             new_neg = st.text_area(
@@ -517,7 +516,6 @@ def main():
                                 key=f"neg_{lang}",
                                 label_visibility="collapsed"
                             )
-                            # Update state
                             kw_config[lang]['negative'] = [x.strip() for x in new_neg.split(",") if x.strip()]
 
 
@@ -535,35 +533,35 @@ def render_metric_card(label, value, subtext="", color="#00B4D8"):
 def show_placeholder_dashboard():
     """Display modern placeholder dashboard."""
     
-    st.markdown("### Mission Status: Idle")
+    st.markdown("### Status: Idle")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        render_metric_card("Total Targets", "—", "Awaiting Scan", "#94A3B8")
+        render_metric_card("Total Targets", "—", "Awaiting search", "#94A3B8")
     with col2:
         render_metric_card("High Value", "—", "Substantive Rejections", "#EF4444")
     with col3:
         render_metric_card("Medium Value", "—", "Withdrawn / Anomalous", "#F59E0B")
     with col4:
-        render_metric_card("Anomalous", "—", "Spark/Plasma Events", "#00B4D8")
+        render_metric_card("Signal Anomalies", "—", "Plasma indicators", "#00B4D8")
     
     st.markdown("---")
     
     # Empty State Hero
     st.markdown("""
     <div style="text-align: center; padding: 4rem 2rem; background: rgba(255,255,255,0.02); border-radius: 16px;">
-        <h2 style="color: #94A3B8;">Ready to Initiate Surveillance</h2>
+        <h2 style="color: #94A3B8;">Ready to start analysis</h2>
         <p style="color: #64748b; max-width: 600px; margin: 0 auto 2rem auto;">
-            The Manager Agent is standby to query 10+ jurisdictions for rejected patent applications
-            containing anomalous hydrogen phenomena patterns.
+            Ready to query multiple jurisdictions for rejected patent applications
+            that match the selected criteria.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
 def render_dashboard_metrics(dashboard):
     """Render the dashboard with actual data."""
-    st.markdown(f"### Mission Status: Completed ({dashboard.mission_id})")
+    st.markdown(f"### Analysis Status: Completed (Ref: {dashboard.mission_id})")
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -574,12 +572,12 @@ def render_dashboard_metrics(dashboard):
     with col3:
         render_metric_card("Medium Value", dashboard.medium_priority_count, "Potential Interest", "#F59E0B")
     with col4:
-        render_metric_card("Anomalous", dashboard.anomalous_count, "Plasma Signatures", "#00B4D8")
+        render_metric_card("Signal Anomalies", dashboard.anomalous_count, "Plasma indicators", "#00B4D8")
         
     st.markdown("### Top Jurisdictions")
     # Simple bar chart using st.bar_chart if we had the breakdown, for now just text
     if dashboard.top_jurisdiction:
-        st.info(f"Most activity detected in territory: **{dashboard.top_jurisdiction}**")
+        st.info(f"Most activity detected in: **{dashboard.top_jurisdiction}**")
 
 def render_deep_dive(assessment):
     """Render a detailed view of a patent assessment."""
@@ -606,7 +604,7 @@ def render_deep_dive(assessment):
         abstract_text = patent_data.get('abstract', 'No abstract available')
         st.info(abstract_text)
         
-        st.markdown("#### Legal Status Forensics")
+        st.markdown("#### Legal Status Review")
         st.write(f"**Interpretation:** {assessment.status_analysis.interpretation}")
         st.write(f"**Refusal Reason:** {assessment.status_analysis.refusal_reason}")
     
@@ -621,15 +619,15 @@ def render_deep_dive(assessment):
         else:
             st.caption("No specific tags")
             
-        st.markdown("**Anomalous Features:**")
+        st.markdown("**Notable Features:**")
         if assessment.is_anomalous:
-            st.markdown("`Anomalous Heat`")
+            st.markdown("`Heat signature detected`")
         else:
             st.caption("None detected")
 
 
 def run_patent_search(jurisdictions, start_date, end_date):
-    """Execute the patent search mission."""
+    """Execute the patent search."""
     
     status_container = st.empty()
     progress_bar = st.progress(0)
@@ -639,26 +637,22 @@ def run_patent_search(jurisdictions, start_date, end_date):
         from project_aether.agents.analyst import AnalystAgent
         from project_aether.utils.artifacts import ArtifactGenerator
         
-        # 1. Initialization
-        status_container.info("Manager Agent: Initializing mission parameters...")
-        time.sleep(1) # UX pacing
+        status_container.info("Initializing analysis parameters...")
+        time.sleep(1)  # UX pacing
         
         connector = LensConnector()
-        # Pass dynamic keywords to the analyst
         keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
         analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
         
-        # 2. Search Phase
         all_results = []
         
-        # Handle "All" jurisdictions (None) - single search with no jurisdiction filter
         if jurisdictions is None:
-            total_steps = 3  # Init + search + analysis + generation
+            total_steps = 3  # init + search + analysis + generation
             current_step = 1
             progress_bar.progress(33)
             
-            status_container.markdown(f"Researcher Agent: Scanning all jurisdictions (no filter)...")
+            status_container.markdown("Searching all jurisdictions (no filter)...")
             
             try:
                 result = asyncio.run(
@@ -674,7 +668,6 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 logger.error(f"Search failed for all jurisdictions: {e}")
                 st.error(f"Search failed: {e}")
         else:
-            # Multiple jurisdictions - iterate through each
             total_steps = len(jurisdictions) + 2  # +2 for analysis and generation
             current_step = 0
             
@@ -683,9 +676,8 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 progress = int((current_step / total_steps) * 100)
                 progress_bar.progress(progress)
                 
-                status_container.markdown(f"Researcher Agent: Scanning jurisdiction `{juris}`...")
+                status_container.markdown(f"Searching jurisdiction {juris}...")
                 
-                # Async run
                 try:
                     result = asyncio.run(
                         connector.search_by_jurisdiction(
@@ -698,45 +690,37 @@ def run_patent_search(jurisdictions, start_date, end_date):
                     all_results.extend(patents)
                 except Exception as e:
                     logger.error(f"Search failed for {juris}: {e}")
-                    # Continue despite error in one jurisdiction
         
-        # Store raw results for deep dive lookup
         st.session_state['all_raw_results'] = all_results
 
-        # 3. Analysis Phase
         current_step += 1
         progress_bar.progress(int((current_step / total_steps) * 100))
-        status_container.markdown(f"🧠 **Analyst Agent:** Processing {len(all_results)} candidates for forensic signals...")
+        status_container.markdown(f"Analyzing {len(all_results)} candidates for key signals...")
         
         assessments = analyst.analyze_batch(all_results)
         
-        # 4. Artifact Generation
         current_step += 1
         progress_bar.progress(100)
-        status_container.markdown("💾 **Manager Agent:** Generating intelligence artifacts...")
+        status_container.markdown("Compiling dashboard outputs...")
         
         dashboard = generator.create_dashboard_artifact(
             assessments=[a.to_dict() for a in assessments],
             jurisdictions=jurisdictions if jurisdictions else ["ALL"]
         )
         
-        # Update State
         st.session_state['assessments'] = assessments
         st.session_state['dashboard'] = dashboard
         
-        status_container.success("✅ Mission Complete. Intelligence Dashboard Updated.")
+        status_container.success("Analysis complete. Dashboard updated.")
         time.sleep(2)
         status_container.empty()
-        
-        # Force refresh mainly to switch to dashboard tab if we could, 
-        # but just re-rendering the current tab works too.
         st.rerun()
 
     except ImportError as e:
         st.error(f"System Error: Dependency missing ({e}). Run `uv sync`.")
     except Exception as e:
-        st.error(f"Critical Mission Failure: {e}")
-        logger.error(f"Mission failed: {e}", exc_info=True)
+        st.error(f"Analysis failed: {e}")
+        logger.error(f"Analysis failed: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
