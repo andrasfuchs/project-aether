@@ -296,18 +296,35 @@ def main():
             "Finland"
         ]
         
+        # Initialize previous selection in session state
+        if 'prev_jurisdiction_selection' not in st.session_state:
+            st.session_state.prev_jurisdiction_selection = ["Russia", "Poland"]
+        
         selected_jurisdiction_names = st.multiselect(
             "Target Jurisdictions",
             options=jurisdiction_display_names,
-            default=["Russia", "Poland"],
-            help="Multinational patent offices to surveil"
+            default=st.session_state.prev_jurisdiction_selection,
+            help="Multinational patent offices to surveil. Select 'All' for no jurisdiction filter."
         )
         
-        # Convert display names to ISO codes
+        # Handle "All" selection logic
+        prev_selection = st.session_state.prev_jurisdiction_selection
+        
+        # If "All" was just selected (wasn't in previous but is now)
+        if "All" in selected_jurisdiction_names and "All" not in prev_selection:
+            selected_jurisdiction_names = ["All"]
+        # If other jurisdictions were selected while "All" was already selected
+        elif "All" in prev_selection and len(selected_jurisdiction_names) > 1 and "All" in selected_jurisdiction_names:
+            # Remove "All" from selection
+            selected_jurisdiction_names = [name for name in selected_jurisdiction_names if name != "All"]
+        
+        # Update session state
+        st.session_state.prev_jurisdiction_selection = selected_jurisdiction_names
+        
+        # Convert display names to ISO codes or None for "All"
         if "All" in selected_jurisdiction_names:
-            # If "All" is selected, use all jurisdiction codes except "All" itself and "EP"
-            selected_jurisdictions = [code for name, code in JURISDICTION_MAP.items() 
-                                     if name not in ["All", "European Patents"]]
+            # "All" means no jurisdiction filter - pass None or empty list
+            selected_jurisdictions = None  # Will be handled to skip jurisdiction filtering
         else:
             selected_jurisdictions = [JURISDICTION_MAP[name] for name in selected_jurisdiction_names]
         
@@ -349,7 +366,8 @@ def main():
     # --- DASHBOARD TAB ---
     with tab_dashboard:
         if run_mission:
-            if not selected_jurisdictions:
+            # Check if jurisdictions are selected (None is valid for "All", but empty selection is not)
+            if not selected_jurisdiction_names:
                 st.error("⚠️ Mission Aborted: No Jurisdictions Selected")
             elif not config.is_lens_configured:
                 st.error("⚠️ Mission Aborted: Lens.org API Disconnected")
@@ -628,21 +646,19 @@ def run_patent_search(jurisdictions, start_date, end_date):
         
         # 2. Search Phase
         all_results = []
-        total_steps = len(jurisdictions) + 2 # +2 for analysis and generation
-        current_step = 0
         
-        for juris in jurisdictions:
-            current_step += 1
-            progress = int((current_step / total_steps) * 100)
-            progress_bar.progress(progress)
+        # Handle "All" jurisdictions (None) - single search with no jurisdiction filter
+        if jurisdictions is None:
+            total_steps = 3  # Init + search + analysis + generation
+            current_step = 1
+            progress_bar.progress(33)
             
-            status_container.markdown(f"📡 **Researcher Agent:** Scanning jurisdiction `{juris}`...")
+            status_container.markdown(f"📡 **Researcher Agent:** Scanning all jurisdictions (no filter)...")
             
-            # Async run
             try:
                 result = asyncio.run(
                     connector.search_by_jurisdiction(
-                        jurisdiction=juris,
+                        jurisdiction=None,
                         start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                         end_date=end_date.strftime("%Y-%m-%d"),
                     )
@@ -650,8 +666,34 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 patents = result.get("data", [])
                 all_results.extend(patents)
             except Exception as e:
-                logger.error(f"Search failed for {juris}: {e}")
-                # Continue despite error in one jurisdiction
+                logger.error(f"Search failed for all jurisdictions: {e}")
+                st.error(f"Search failed: {e}")
+        else:
+            # Multiple jurisdictions - iterate through each
+            total_steps = len(jurisdictions) + 2  # +2 for analysis and generation
+            current_step = 0
+            
+            for juris in jurisdictions:
+                current_step += 1
+                progress = int((current_step / total_steps) * 100)
+                progress_bar.progress(progress)
+                
+                status_container.markdown(f"📡 **Researcher Agent:** Scanning jurisdiction `{juris}`...")
+                
+                # Async run
+                try:
+                    result = asyncio.run(
+                        connector.search_by_jurisdiction(
+                            jurisdiction=juris,
+                            start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
+                            end_date=end_date.strftime("%Y-%m-%d"),
+                        )
+                    )
+                    patents = result.get("data", [])
+                    all_results.extend(patents)
+                except Exception as e:
+                    logger.error(f"Search failed for {juris}: {e}")
+                    # Continue despite error in one jurisdiction
         
         # Store raw results for deep dive lookup
         st.session_state['all_raw_results'] = all_results
@@ -670,7 +712,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
         
         dashboard = generator.create_dashboard_artifact(
             assessments=[a.to_dict() for a in assessments],
-            jurisdictions=jurisdictions
+            jurisdictions=jurisdictions if jurisdictions else ["ALL"]
         )
         
         # Update State

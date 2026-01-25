@@ -148,7 +148,7 @@ class LensConnector:
     
     def build_anomalous_spark_query(
         self,
-        jurisdictions: List[str],
+        jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str] = None,
     ) -> Dict:
@@ -157,7 +157,7 @@ class LensConnector:
         Implements the search strategy from the implementation plan.
         
         Args:
-            jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"])
+            jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"]), or None for no jurisdiction filter
             start_date: Start date in ISO format (YYYY-MM-DD), or None for infinite lookback
             end_date: End date in ISO format. If None, uses today.
             
@@ -179,12 +179,6 @@ class LensConnector:
                     ]
                 }
             },
-            # Must be in target jurisdictions
-            {
-                "terms": {
-                    "jurisdiction": jurisdictions
-                }
-            },
             # Must be discontinued/withdrawn
             {
                 "bool": {
@@ -196,6 +190,14 @@ class LensConnector:
                 }
             },
         ]
+        
+        # Add jurisdiction filter only if jurisdictions are specified
+        if jurisdictions is not None and len(jurisdictions) > 0:
+            must_clauses.append({
+                "terms": {
+                    "jurisdiction": jurisdictions
+                }
+            })
         
         # Add date range filter only if start_date is provided (not infinite)
         if start_date is not None:
@@ -230,10 +232,10 @@ class LensConnector:
                     ],
                     "must_not": [
                         # Negative filter for automotive noise
-                        {"match_phrase": {"title": "spark plug"}},
+                        {"match_phrase": {"biblio.invention_title.text": "spark plug"}},
                         {"match_phrase": {"abstract": "internal combustion"}},
                         {"match_phrase": {"abstract": "ignition system"}},
-                        {"match_phrase": {"title": "ignition coil"}},
+                        {"match_phrase": {"biblio.invention_title.text": "ignition coil"}},
                     ],
                     "minimum_should_match": 1,
                 }
@@ -243,15 +245,15 @@ class LensConnector:
                 "lens_id",
                 "jurisdiction",
                 "doc_number",
-                "title",
+                "biblio.invention_title",
                 "abstract",
                 "claims",
                 "legal_status",
-                "applicants",
-                "inventors",
+                "biblio.parties.applicants",
+                "biblio.parties.inventors",
                 "date_published",
-                "classifications_ipcr",
-                "classifications_cpc",
+                "biblio.classifications_ipcr",
+                "biblio.classifications_cpc",
             ],
         }
         
@@ -259,7 +261,7 @@ class LensConnector:
     
     async def search_by_jurisdiction(
         self,
-        jurisdiction: str,
+        jurisdiction: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str] = None,
     ) -> Dict:
@@ -267,14 +269,15 @@ class LensConnector:
         Convenience method to search a single jurisdiction.
         
         Args:
-            jurisdiction: Single jurisdiction code (e.g., "RU")
+            jurisdiction: Single jurisdiction code (e.g., "RU"), or None for no filter
             start_date: Start date in ISO format, or None for infinite lookback
             end_date: End date in ISO format
             
         Returns:
             Search results from Lens.org
         """
-        query = self.build_anomalous_spark_query([jurisdiction], start_date, end_date)
+        jurisdictions = [jurisdiction] if jurisdiction else None
+        query = self.build_anomalous_spark_query(jurisdictions, start_date, end_date)
         return await self.search_patents(query)
     
     async def get_patent_by_lens_id(self, lens_id: str) -> Optional[Dict]:
@@ -294,15 +297,15 @@ class LensConnector:
                 "lens_id",
                 "jurisdiction",
                 "doc_number",
-                "title",
+                "biblio.invention_title",
                 "abstract",
                 "claims",
                 "legal_status",
-                "applicants",
-                "inventors",
+                "biblio.parties.applicants",
+                "biblio.parties.inventors",
                 "date_published",
-                "classifications_ipcr",
-                "classifications_cpc",
+                "biblio.classifications_ipcr",
+                "biblio.classifications_cpc",
                 "biblio",
             ],
         }
