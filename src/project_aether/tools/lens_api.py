@@ -18,6 +18,7 @@ from tenacity import (
 )
 
 from project_aether.core.config import get_config
+from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 # Configure Logging
 logger = logging.getLogger("LensConnector")
@@ -151,6 +152,8 @@ class LensConnector:
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str] = None,
+        include_terms: Optional[List[str]] = None,
+        exclude_terms: Optional[List[str]] = None,
     ) -> Dict:
         """
         Construct the complex Boolean query for 'Sparks in Hydrogen'.
@@ -167,6 +170,14 @@ class LensConnector:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
+        if include_terms is None:
+            include_terms = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+        if exclude_terms is None:
+            exclude_terms = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+
+        include_terms = [term for term in include_terms if term]
+        exclude_terms = [term for term in exclude_terms if term]
+
         # Build the base must clauses
         must_clauses = [
             # Must contain hydrogen-related terms
@@ -210,34 +221,25 @@ class LensConnector:
                 }
             })
         
+        # Build search keyword clauses
+        should_clauses = [
+            {"match_phrase": {"abstract": term}}
+            for term in include_terms
+        ]
+
+        must_not_clauses = []
+        for term in exclude_terms:
+            must_not_clauses.append({"match_phrase": {"abstract": term}})
+            must_not_clauses.append({"match_phrase": {"biblio.invention_title.text": term}})
+
         # Build the query following the implementation plan structure
         query = {
             "query": {
                 "bool": {
                     "must": must_clauses,
-                    "should": [
-                        # High priority: anomalous terminology
-                        {"match_phrase": {"abstract": "anomalous heat"}},
-                        {"match_phrase": {"abstract": "excess energy"}},
-                        {"match_phrase": {"abstract": "plasma"}},
-                        {"match_phrase": {"abstract": "spark"}},
-                        {"match_phrase": {"abstract": "discharge"}},
-                        {"match_phrase": {"abstract": "cold fusion"}},
-                        {"match_phrase": {"abstract": "LENR"}},
-                        {"match_phrase": {"abstract": "transmutation"}},
-                        # Russian terminology
-                        {"match_phrase": {"abstract": "аномальное тепловыделение"}},
-                        {"match_phrase": {"abstract": "плазменный вихрь"}},
-                        {"match_phrase": {"abstract": "холодный синтез"}},
-                    ],
-                    "must_not": [
-                        # Negative filter for automotive noise
-                        {"match_phrase": {"biblio.invention_title.text": "spark plug"}},
-                        {"match_phrase": {"abstract": "internal combustion"}},
-                        {"match_phrase": {"abstract": "ignition system"}},
-                        {"match_phrase": {"biblio.invention_title.text": "ignition coil"}},
-                    ],
-                    "minimum_should_match": 1,
+                    "should": should_clauses,
+                    "must_not": must_not_clauses,
+                    "minimum_should_match": 1 if should_clauses else 0,
                 }
             },
             "size": 50,  # Retrieve 50 candidates for analysis
@@ -264,6 +266,8 @@ class LensConnector:
         jurisdiction: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str] = None,
+        include_terms: Optional[List[str]] = None,
+        exclude_terms: Optional[List[str]] = None,
     ) -> Dict:
         """
         Convenience method to search a single jurisdiction.
@@ -277,7 +281,13 @@ class LensConnector:
             Search results from Lens.org
         """
         jurisdictions = [jurisdiction] if jurisdiction else None
-        query = self.build_anomalous_spark_query(jurisdictions, start_date, end_date)
+        query = self.build_anomalous_spark_query(
+            jurisdictions,
+            start_date,
+            end_date,
+            include_terms=include_terms,
+            exclude_terms=exclude_terms,
+        )
         return await self.search_patents(query)
     
     async def get_patent_by_lens_id(self, lens_id: str) -> Optional[Dict]:

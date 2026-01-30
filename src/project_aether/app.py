@@ -9,7 +9,21 @@ from datetime import datetime, timedelta
 import time
 import asyncio
 import copy
+from typing import List, Optional
 from project_aether.core.keywords import DEFAULT_KEYWORDS
+from project_aether.core.keyword_translation import (
+    load_keyword_cache,
+    save_keyword_cache,
+    ensure_keyword_set,
+    get_cached_translation,
+    set_cached_translation,
+    keyword_set_id,
+    normalize_terms,
+    default_translation_for_language,
+    translate_keywords_with_llm,
+    get_history_entries,
+    delete_keyword_set,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -39,7 +53,31 @@ JURISDICTION_MAP = {
     "Italy": "IT",
     "Sweden": "SE",
     "Norway": "NO",
-    "Finland": "FI"
+    "Finland": "FI",
+    "Hungary": "HU"
+}
+
+JURISDICTION_LANGUAGE_MAP = {
+    "CN": "Chinese",
+    "JP": "Japanese",
+    "KR": "Korean",
+    "DE": "German",
+    "FR": "French",
+    "ES": "Spanish",
+    "IT": "Italian",
+    "SE": "Swedish",
+    "NO": "Norwegian",
+    "FI": "Finnish",
+    "RU": "Russian",
+    "PL": "Polish",
+    "RO": "Romanian",
+    "CZ": "Czech",
+    "NL": "Dutch",
+    "GB": "English",
+    "US": "English",
+    "CA": "English",
+    "EP": "English",
+    "HU": "Hungarian",
 }
 
 # Page configuration
@@ -225,12 +263,103 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+def get_language_for_jurisdiction(code: Optional[str]) -> str:
+    if not code:
+        return "English"
+    return JURISDICTION_LANGUAGE_MAP.get(code, "English")
+
+
+def get_target_languages(jurisdictions: Optional[List[str]]) -> List[str]:
+    if not jurisdictions:
+        return []
+    languages = {
+        get_language_for_jurisdiction(code)
+        for code in jurisdictions
+        if get_language_for_jurisdiction(code) != "English"
+    }
+    return sorted(languages)
+
+
+def get_active_english_keywords(kw_config: dict) -> tuple[List[str], List[str]]:
+    english = kw_config.get("English", {})
+    include_terms = normalize_terms(english.get("positive", []))
+    exclude_terms = normalize_terms(english.get("negative", []))
+    return include_terms, exclude_terms
+
+
+def translation_context() -> str:
+    return (
+        "The keywords are for patent searches related to anomalous heat, "
+        "low energy nuclear reactions (LENR), plasma discharge phenomena, "
+        "transmutation, and excess energy claims. The terms appear in patent "
+        "titles and abstracts and should be translated into technical, "
+        "domain-appropriate language."
+    )
+
+
+def resolve_keywords_for_jurisdiction(
+    include_terms: List[str],
+    exclude_terms: List[str],
+    jurisdiction_code: Optional[str],
+    cache: dict,
+    config,
+) -> tuple[List[str], List[str], str, str]:
+    language = get_language_for_jurisdiction(jurisdiction_code)
+    if language == "English":
+        return include_terms, exclude_terms, language, "english"
+
+    set_id = keyword_set_id(include_terms, exclude_terms)
+    cached = get_cached_translation(cache, set_id, language)
+    if cached:
+        return cached.get("include", include_terms), cached.get("exclude", exclude_terms), language, cached.get("source", "cache")
+
+    if config.google_api_key:
+        try:
+            translated_include, translated_exclude = translate_keywords_with_llm(
+                include_terms=include_terms,
+                exclude_terms=exclude_terms,
+                target_language=language,
+                context=translation_context(),
+                api_key=config.google_api_key,
+            )
+            set_cached_translation(
+                cache,
+                set_id=set_id,
+                language=language,
+                include_terms=translated_include,
+                exclude_terms=translated_exclude,
+                source="llm",
+            )
+            save_keyword_cache(cache)
+            return translated_include, translated_exclude, language, "llm"
+        except Exception:
+            pass
+
+    fallback = default_translation_for_language(language)
+    if fallback:
+        translated_include, translated_exclude = fallback
+        set_cached_translation(
+            cache,
+            set_id=set_id,
+            language=language,
+            include_terms=translated_include,
+            exclude_terms=translated_exclude,
+            source="default",
+        )
+        save_keyword_cache(cache)
+        return translated_include, translated_exclude, language, "default"
+
+    return include_terms, exclude_terms, language, "fallback"
+
 def main():
     """Main application entry point."""
     
     # Initialize Session State for Keywords if not present
     if 'keyword_config' not in st.session_state:
         st.session_state['keyword_config'] = copy.deepcopy(DEFAULT_KEYWORDS)
+    if 'keyword_cache' not in st.session_state:
+        st.session_state['keyword_cache'] = load_keyword_cache()
     
     # --- HEADER SECTION ---
     st.markdown("""
@@ -247,6 +376,9 @@ def main():
             unsafe_allow_html=True
         )
         st.markdown("---")
+
+        from project_aether.core.config import get_config
+        config = get_config()
         
         st.write("#### Temporal Scope")
         
@@ -297,7 +429,8 @@ def main():
             "Italy",
             "Sweden",
             "Norway",
-            "Finland"
+            "Finland",
+            "Hungary"
         ]
         
         # Initialize previous selection in session state
@@ -331,6 +464,128 @@ def main():
             selected_jurisdictions = None  # Will be handled to skip jurisdiction filtering
         else:
             selected_jurisdictions = [JURISDICTION_MAP[name] for name in selected_jurisdiction_names]
+
+        st.markdown("---")
+        st.write("#### Search Keywords")
+
+        keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
+        include_terms, exclude_terms = get_active_english_keywords(keyword_config)
+        cache = st.session_state.get('keyword_cache', {})
+
+        with st.expander("Current keyword set", expanded=True):
+            include_text = st.text_area(
+                "Include terms",
+                value=", ".join(include_terms),
+                height=120,
+                key="sidebar_include_terms",
+            )
+            exclude_text = st.text_area(
+                "Exclude terms",
+                value=", ".join(exclude_terms),
+                height=120,
+                key="sidebar_exclude_terms",
+            )
+
+            updated_include = [term.strip() for term in include_text.split(",") if term.strip()]
+            updated_exclude = [term.strip() for term in exclude_text.split(",") if term.strip()]
+            keyword_config.setdefault("English", {})["positive"] = updated_include
+            keyword_config.setdefault("English", {})["negative"] = updated_exclude
+            st.session_state['keyword_config'] = keyword_config
+
+            st.caption(f"Include: {len(updated_include)} terms | Exclude: {len(updated_exclude)} terms")
+
+            if st.button("Save keyword set", use_container_width=True):
+                ensure_keyword_set(cache, updated_include, updated_exclude)
+                save_keyword_cache(cache)
+                st.session_state['keyword_cache'] = cache
+                st.success("Keyword set saved to history")
+
+        target_languages = get_target_languages(selected_jurisdictions)
+
+        with st.expander("Translations", expanded=bool(target_languages)):
+            if not target_languages:
+                st.caption("No translations needed for the current jurisdiction selection.")
+            else:
+                if not config.google_api_key:
+                    st.warning("LLM translation requires GOOGLE_API_KEY. Using cached or default translations only.")
+
+                if st.button("Generate/Refresh translations", use_container_width=True):
+                    set_id = keyword_set_id(updated_include, updated_exclude)
+                    for language in target_languages:
+                        if config.google_api_key:
+                            try:
+                                translated_include, translated_exclude = translate_keywords_with_llm(
+                                    include_terms=updated_include,
+                                    exclude_terms=updated_exclude,
+                                    target_language=language,
+                                    context=translation_context(),
+                                    api_key=config.google_api_key,
+                                )
+                                set_cached_translation(
+                                    cache,
+                                    set_id=set_id,
+                                    language=language,
+                                    include_terms=translated_include,
+                                    exclude_terms=translated_exclude,
+                                    source="llm",
+                                )
+                                continue
+                            except Exception:
+                                pass
+                        fallback = default_translation_for_language(language)
+                        if fallback:
+                            translated_include, translated_exclude = fallback
+                            set_cached_translation(
+                                cache,
+                                set_id=set_id,
+                                language=language,
+                                include_terms=translated_include,
+                                exclude_terms=translated_exclude,
+                                source="default",
+                            )
+                    save_keyword_cache(cache)
+                    st.session_state['keyword_cache'] = cache
+                    st.success("Translations updated")
+
+                set_id = keyword_set_id(updated_include, updated_exclude)
+                for language in target_languages:
+                    cached = get_cached_translation(cache, set_id, language)
+                    if cached:
+                        include_list = ", ".join(cached.get("include", []))
+                        exclude_list = ", ".join(cached.get("exclude", []))
+                        st.markdown(f"**{language}**")
+                        st.caption(f"Include: {include_list}")
+                        st.caption(f"Exclude: {exclude_list}")
+                    else:
+                        st.markdown(f"**{language}**")
+                        st.caption("No cached translation yet.")
+
+        with st.expander("Previous keyword sets"):
+            history_entries = get_history_entries(cache)
+            if not history_entries:
+                st.caption("No saved keyword sets yet.")
+            else:
+                labels = [entry.get("label", entry["id"]) for entry in history_entries]
+                selected_label = st.selectbox("Select a saved set", options=labels)
+                selected_entry = next(
+                    (entry for entry in history_entries if entry.get("label", entry["id"]) == selected_label),
+                    history_entries[0],
+                )
+                col_load, col_delete = st.columns(2)
+                with col_load:
+                    if st.button("Load", use_container_width=True):
+                        keyword_config.setdefault("English", {})["positive"] = selected_entry.get("include", [])
+                        keyword_config.setdefault("English", {})["negative"] = selected_entry.get("exclude", [])
+                        st.session_state['keyword_config'] = keyword_config
+                        st.session_state["sidebar_include_terms"] = ", ".join(selected_entry.get("include", []))
+                        st.session_state["sidebar_exclude_terms"] = ", ".join(selected_entry.get("exclude", []))
+                        st.success("Keyword set loaded")
+                with col_delete:
+                    if st.button("Delete", use_container_width=True):
+                        delete_keyword_set(cache, selected_entry["id"])
+                        save_keyword_cache(cache)
+                        st.session_state['keyword_cache'] = cache
+                        st.success("Keyword set deleted")
         
         st.markdown("---")
         
@@ -342,9 +597,6 @@ def main():
         
         # System Status in Sidebar
         st.write("#### Connectivity")
-        
-        from project_aether.core.config import get_config
-        config = get_config()
         
         if config.is_lens_configured:
             st.markdown('<div class="status-badge status-ok">Lens.org API Active</div>', unsafe_allow_html=True)
@@ -640,12 +892,19 @@ def run_patent_search(jurisdictions, start_date, end_date):
         from project_aether.tools.lens_api import LensConnector
         from project_aether.agents.analyst import AnalystAgent
         from project_aether.utils.artifacts import ArtifactGenerator
+        from project_aether.core.config import get_config
         
         status_container.info("Initializing analysis parameters...")
         time.sleep(1)  # UX pacing
         
+        config = get_config()
         connector = LensConnector()
         keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
+        cache = st.session_state.get('keyword_cache', load_keyword_cache())
+        include_terms, exclude_terms = get_active_english_keywords(keyword_config)
+        ensure_keyword_set(cache, include_terms, exclude_terms)
+        save_keyword_cache(cache)
+        st.session_state['keyword_cache'] = cache
         analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
         
@@ -659,11 +918,20 @@ def run_patent_search(jurisdictions, start_date, end_date):
             status_container.markdown("Searching all jurisdictions (no filter)...")
             
             try:
+                resolved_include, resolved_exclude, language, _ = resolve_keywords_for_jurisdiction(
+                    include_terms=include_terms,
+                    exclude_terms=exclude_terms,
+                    jurisdiction_code=None,
+                    cache=cache,
+                    config=config,
+                )
                 result = asyncio.run(
                     connector.search_by_jurisdiction(
                         jurisdiction=None,
                         start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                         end_date=end_date.strftime("%Y-%m-%d"),
+                        include_terms=resolved_include,
+                        exclude_terms=resolved_exclude,
                     )
                 )
                 patents = result.get("data", [])
@@ -680,7 +948,14 @@ def run_patent_search(jurisdictions, start_date, end_date):
                 progress = int((current_step / total_steps) * 100)
                 progress_bar.progress(progress)
                 
-                status_container.markdown(f"Searching jurisdiction {juris}...")
+                resolved_include, resolved_exclude, language, _ = resolve_keywords_for_jurisdiction(
+                    include_terms=include_terms,
+                    exclude_terms=exclude_terms,
+                    jurisdiction_code=juris,
+                    cache=cache,
+                    config=config,
+                )
+                status_container.markdown(f"Searching jurisdiction {juris} ({language})...")
                 
                 try:
                     result = asyncio.run(
@@ -688,6 +963,8 @@ def run_patent_search(jurisdictions, start_date, end_date):
                             jurisdiction=juris,
                             start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                             end_date=end_date.strftime("%Y-%m-%d"),
+                            include_terms=resolved_include,
+                            exclude_terms=resolved_exclude,
                         )
                     )
                     patents = result.get("data", [])
