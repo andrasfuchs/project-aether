@@ -183,9 +183,12 @@ def translate_keywords_with_llm(
 
     system_prompt = (
         "You are translating short patent search keyword phrases for a technical "
-        "prior-art query. Preserve acronyms (e.g., LENR, LANR), chemical symbols, "
+        "prior-art query to " + target_language + ". "
+        "Preserve acronyms (e.g., LENR, LANR), chemical symbols, "
         "and established domain terms. Keep phrases concise, natural for patent "
-        "abstracts, and avoid adding commentary. Output strict JSON."
+        "abstracts, and avoid adding commentary."
+        "Your input is a JSON object with 'include_terms' and 'exclude_terms' lists."
+        "Translate those list items and return them as a strict JSON output."
     )
 
     payload = {
@@ -218,8 +221,16 @@ def translate_keywords_with_llm(
     # Handle response.content which might be a string or other type
     content = response.content
     if isinstance(content, list):
-        # If content is a list of message parts, concatenate them
-        content = " ".join(str(part) for part in content)
+        # If content is a list of message parts, extract text from each part
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and 'text' in part:
+                text_parts.append(part['text'])
+            elif isinstance(part, str):
+                text_parts.append(part)
+            else:
+                text_parts.append(str(part))
+        content = " ".join(text_parts)
     elif not isinstance(content, str):
         content = str(content)
     

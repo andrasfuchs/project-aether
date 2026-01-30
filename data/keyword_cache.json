@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "keyword_sets": {
+    "f5b842bdde45": {
+      "id": "f5b842bdde45",
+      "label": "v2 inert gas thermonuclear fuel",
+      "include": [
+        "inert gas thermonuclear fuel"
+      ],
+      "exclude": [
+        "spark plug"
+      ],
+      "created_at": "2026-01-30T10:30:23.661035"
+    }
+  },
+  "history": [
+    {
+      "id": "f5b842bdde45",
+      "last_used": "2026-01-30T10:30:23.661035"
+    }
+  ],
+  "translations": {
+    "f5b842bdde45": {
+      "Norwegian": {
+        "language": "Norwegian",
+        "include": [
+          "termonukleært brensel av inert gass"
+        ],
+        "exclude": [
+          "tennplugg"
+        ],
+        "source": "llm",
+        "updated_at": "2026-01-30T11:12:01.538758"
+      },
+      "Hungarian": {
+        "language": "Hungarian",
+        "include": [
+          "nemesgáz termonukleáris üzemanyag"
+        ],
+        "exclude": [
+          "gyújtógyertya"
+        ],
+        "source": "llm",
+        "updated_at": "2026-01-30T11:15:55.669327"
+      }
+    }
+  },
+  "updated_at": "2026-01-30T11:15:55.669327"
+}
