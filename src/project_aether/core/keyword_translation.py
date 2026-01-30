@@ -19,7 +19,7 @@ from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-1.5-flash"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 
 
 def _utc_now() -> str:
@@ -203,6 +203,11 @@ def translate_keywords_with_llm(
         model=model,
         google_api_key=api_key,
         temperature=0.2,
+        model_kwargs={
+            "thinking_config": {
+                "thinking_budget": 1024
+            }
+        }
     )
 
     response = llm.invoke([
@@ -210,13 +215,24 @@ def translate_keywords_with_llm(
         HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
     ])
 
-    data = _extract_json(response.content)
+    # Handle response.content which might be a string or other type
+    content = response.content
+    if isinstance(content, list):
+        # If content is a list of message parts, concatenate them
+        content = " ".join(str(part) for part in content)
+    elif not isinstance(content, str):
+        content = str(content)
+    
+    data = _extract_json(content)
     include = normalize_terms(data.get("include", include_terms))
     exclude = normalize_terms(data.get("exclude", exclude_terms))
     return include, exclude
 
 
 def _extract_json(text: str) -> Dict[str, Any]:
+    if not isinstance(text, str):
+        return {}
+    
     try:
         return json.loads(text)
     except Exception:

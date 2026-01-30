@@ -352,6 +352,17 @@ def resolve_keywords_for_jurisdiction(
 
     return include_terms, exclude_terms, language, "fallback"
 
+
+def load_keyword_set_callback(entry):
+    """Callback to load keyword set into session state before widget rendering."""
+    if 'keyword_config' in st.session_state:
+        st.session_state['keyword_config'].setdefault("English", {})["positive"] = entry.get("include", [])
+        st.session_state['keyword_config'].setdefault("English", {})["negative"] = entry.get("exclude", [])
+    
+    # Increment widget version to force recreation
+    st.session_state['keyword_widget_version'] = st.session_state.get('keyword_widget_version', 0) + 1
+
+
 def main():
     """Main application entry point."""
     
@@ -360,6 +371,8 @@ def main():
         st.session_state['keyword_config'] = copy.deepcopy(DEFAULT_KEYWORDS)
     if 'keyword_cache' not in st.session_state:
         st.session_state['keyword_cache'] = load_keyword_cache()
+    if 'keyword_widget_version' not in st.session_state:
+        st.session_state['keyword_widget_version'] = 0
     
     # --- HEADER SECTION ---
     st.markdown("""
@@ -471,19 +484,20 @@ def main():
         keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
         include_terms, exclude_terms = get_active_english_keywords(keyword_config)
         cache = st.session_state.get('keyword_cache', {})
+        widget_version = st.session_state.get('keyword_widget_version', 0)
 
         with st.expander("Current keyword set", expanded=True):
             include_text = st.text_area(
                 "Include terms",
                 value=", ".join(include_terms),
                 height=120,
-                key="sidebar_include_terms",
+                key=f"sidebar_include_terms_{widget_version}",
             )
             exclude_text = st.text_area(
                 "Exclude terms",
                 value=", ".join(exclude_terms),
                 height=120,
-                key="sidebar_exclude_terms",
+                key=f"sidebar_exclude_terms_{widget_version}",
             )
 
             updated_include = [term.strip() for term in include_text.split(",") if term.strip()]
@@ -494,8 +508,10 @@ def main():
 
             st.caption(f"Include: {len(updated_include)} terms | Exclude: {len(updated_exclude)} terms")
 
-            if st.button("Save keyword set", use_container_width=True):
-                ensure_keyword_set(cache, updated_include, updated_exclude)
+            set_label = st.text_input("Name (optional)", key="sidebar_set_label", placeholder="e.g. My Custom Keywords")
+
+            if st.button("💾 Save", use_container_width=True):
+                ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
                 save_keyword_cache(cache)
                 st.session_state['keyword_cache'] = cache
                 st.success("Keyword set saved to history")
@@ -509,9 +525,10 @@ def main():
                 if not config.google_api_key:
                     st.warning("LLM translation requires GOOGLE_API_KEY. Using cached or default translations only.")
 
-                if st.button("Generate/Refresh translations", use_container_width=True):
+                if st.button("Generate", use_container_width=True):
                     set_id = keyword_set_id(updated_include, updated_exclude)
                     for language in target_languages:
+                        translation_successful = False
                         if config.google_api_key:
                             try:
                                 translated_include, translated_exclude = translate_keywords_with_llm(
@@ -529,20 +546,22 @@ def main():
                                     exclude_terms=translated_exclude,
                                     source="llm",
                                 )
-                                continue
-                            except Exception:
-                                pass
-                        fallback = default_translation_for_language(language)
-                        if fallback:
-                            translated_include, translated_exclude = fallback
-                            set_cached_translation(
-                                cache,
-                                set_id=set_id,
-                                language=language,
-                                include_terms=translated_include,
-                                exclude_terms=translated_exclude,
-                                source="default",
-                            )
+                                translation_successful = True
+                            except Exception as e:
+                                st.warning(f"Translation failed for {language}: {e}")
+                        
+                        if not translation_successful:
+                            fallback = default_translation_for_language(language)
+                            if fallback:
+                                translated_include, translated_exclude = fallback
+                                set_cached_translation(
+                                    cache,
+                                    set_id=set_id,
+                                    language=language,
+                                    include_terms=translated_include,
+                                    exclude_terms=translated_exclude,
+                                    source="default",
+                                )
                     save_keyword_cache(cache)
                     st.session_state['keyword_cache'] = cache
                     st.success("Translations updated")
@@ -573,19 +592,18 @@ def main():
                 )
                 col_load, col_delete = st.columns(2)
                 with col_load:
-                    if st.button("Load", use_container_width=True):
-                        keyword_config.setdefault("English", {})["positive"] = selected_entry.get("include", [])
-                        keyword_config.setdefault("English", {})["negative"] = selected_entry.get("exclude", [])
-                        st.session_state['keyword_config'] = keyword_config
-                        st.session_state["sidebar_include_terms"] = ", ".join(selected_entry.get("include", []))
-                        st.session_state["sidebar_exclude_terms"] = ", ".join(selected_entry.get("exclude", []))
+                    if st.button("📂", use_container_width=True, on_click=load_keyword_set_callback, args=(selected_entry,)):
                         st.success("Keyword set loaded")
+                        time.sleep(0.3)
+                        st.rerun()
                 with col_delete:
-                    if st.button("Delete", use_container_width=True):
+                    if st.button("🗑️", use_container_width=True):
                         delete_keyword_set(cache, selected_entry["id"])
                         save_keyword_cache(cache)
                         st.session_state['keyword_cache'] = cache
                         st.success("Keyword set deleted")
+                        time.sleep(0.5)
+                        st.rerun()
         
         st.markdown("---")
         
