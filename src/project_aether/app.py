@@ -374,6 +374,16 @@ def main():
     if 'keyword_widget_version' not in st.session_state:
         st.session_state['keyword_widget_version'] = 0
     
+    # Load the most recently used keyword set if available
+    if 'keyword_set_loaded' not in st.session_state:
+        cache = st.session_state['keyword_cache']
+        history_entries = get_history_entries(cache)
+        if history_entries:
+            most_recent = history_entries[0]
+            st.session_state['keyword_config'].setdefault("English", {})["positive"] = most_recent.get("include", [])
+            st.session_state['keyword_config'].setdefault("English", {})["negative"] = most_recent.get("exclude", [])
+        st.session_state['keyword_set_loaded'] = True
+    
     # --- HEADER SECTION ---
     st.markdown("""
     <div class="header-container">
