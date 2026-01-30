@@ -16,7 +16,7 @@
   "history": [
     {
       "id": "f5b842bdde45",
-      "last_used": "2026-01-30T11:22:08.846800"
+      "last_used": "2026-01-30T11:58:17.824674"
     }
   ],
   "translations": {
@@ -24,7 +24,7 @@
       "Norwegian": {
         "language": "Norwegian",
         "include": [
-          "termonukleært brensel av inert gass"
+          "termonuklaert drivstoff av inert gass"
         ],
         "exclude": [
           "tennplugg"
@@ -45,5 +45,5 @@
       }
     }
   },
-  "updated_at": "2026-01-30T11:22:08.847801"
+  "updated_at": "2026-01-30T11:58:17.825200"
 }

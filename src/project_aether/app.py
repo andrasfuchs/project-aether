@@ -27,10 +27,17 @@ from project_aether.core.keyword_translation import (
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.DEBUG,  # Changed from INFO to DEBUG to see debug messages
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True,  # Force reconfiguration even if logging was already configured
+    handlers=[
+        logging.StreamHandler()  # Ensure output goes to console/terminal
+    ]
 )
 logger = logging.getLogger("ProjectAether")
+
+# Explicitly set the LensConnector logger to DEBUG
+logging.getLogger("LensConnector").setLevel(logging.DEBUG)
 
 # Jurisdiction mapping: Display Name -> ISO Code(s)
 JURISDICTION_MAP = {
@@ -958,8 +965,9 @@ def run_patent_search(jurisdictions, start_date, end_date):
                         jurisdiction=None,
                         start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                         end_date=end_date.strftime("%Y-%m-%d"),
-                        include_terms=resolved_include,
-                        exclude_terms=resolved_exclude,
+                        positive_keywords=resolved_include,
+                        negative_keywords=resolved_exclude,
+                        language="English",
                     )
                 )
                 patents = result.get("data", [])
@@ -991,8 +999,9 @@ def run_patent_search(jurisdictions, start_date, end_date):
                             jurisdiction=juris,
                             start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
                             end_date=end_date.strftime("%Y-%m-%d"),
-                            include_terms=resolved_include,
-                            exclude_terms=resolved_exclude,
+                            positive_keywords=resolved_include,
+                            negative_keywords=resolved_exclude,
+                            language=language,
                         )
                     )
                     patents = result.get("data", [])

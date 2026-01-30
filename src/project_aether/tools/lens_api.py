@@ -23,6 +23,30 @@ from project_aether.core.keywords import DEFAULT_KEYWORDS
 # Configure Logging
 logger = logging.getLogger("LensConnector")
 
+# Mapping of jurisdiction codes to full country names for logging
+JURISDICTION_NAMES = {
+    "EP": "European Patent Office",
+    "CN": "China",
+    "JP": "Japan",
+    "US": "United States",
+    "DE": "Germany",
+    "KR": "Republic of Korea",
+    "GB": "United Kingdom",
+    "FR": "France",
+    "CA": "Canada",
+    "RU": "Russia",
+    "PL": "Poland",
+    "RO": "Romania",
+    "CZ": "Czech Republic",
+    "NL": "Netherlands",
+    "ES": "Spain",
+    "IT": "Italy",
+    "SE": "Sweden",
+    "NO": "Norway",
+    "FI": "Finland",
+    "HU": "Hungary"
+}
+
 
 class LensAPIError(Exception):
     """Custom exception for Lens.org API failures."""
@@ -112,7 +136,8 @@ class LensConnector:
         
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                logger.debug(f"Sending query to Lens.org: {query_payload}")
+                import json
+                logger.debug(f"Sending query to Lens.org:\n{json.dumps(query_payload, indent=2)}")
                 
                 response = await client.post(
                     self.base_url,
@@ -132,9 +157,6 @@ class LensConnector:
                     raise LensAPIError(error_msg)
                 
                 result = response.json()
-                total_results = result.get("total", 0)
-                logger.info(f"✅ Retrieved {total_results} results from Lens.org")
-                
                 return result
                 
         except httpx.TimeoutException as e:
@@ -147,22 +169,28 @@ class LensConnector:
             logger.error(f"Unexpected error: {e}")
             raise LensAPIError(f"Unexpected error: {e}")
     
-    def build_anomalous_spark_query(
+    def build_keyword_search_query(
         self,
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        include_terms: Optional[List[str]] = None,
-        exclude_terms: Optional[List[str]] = None,
+        positive_keywords: Optional[List[str]] = None,
+        negative_keywords: Optional[List[str]] = None,
+        patent_status_filter: Optional[List[str]] = None,
     ) -> Dict:
         """
-        Construct the complex Boolean query for 'Sparks in Hydrogen'.
-        Implements the search strategy from the implementation plan.
+        Construct a flexible keyword-based patent search query.
+        
+        Uses OR logic for positive keywords (match ANY positive keyword).
+        Uses AND logic for negative keywords (exclude results containing ANY negative keyword).
         
         Args:
             jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"]), or None for no jurisdiction filter
             start_date: Start date in ISO format (YYYY-MM-DD), or None for infinite lookback
             end_date: End date in ISO format. If None, uses today.
+            positive_keywords: Keywords to search for (OR logic - any match returns result)
+            negative_keywords: Keywords to exclude (AND logic - exclude if ANY match)
+            patent_status_filter: Optional list of patent statuses to filter by (e.g., ["DISCONTINUED", "WITHDRAWN"])
             
         Returns:
             JSON query payload for Lens.org API
@@ -170,37 +198,16 @@ class LensConnector:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
-        if include_terms is None:
-            include_terms = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
-        if exclude_terms is None:
-            exclude_terms = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+        if positive_keywords is None:
+            positive_keywords = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+        if negative_keywords is None:
+            negative_keywords = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
 
-        include_terms = [term for term in include_terms if term]
-        exclude_terms = [term for term in exclude_terms if term]
+        # Clean up empty strings
+        positive_keywords = [term for term in positive_keywords if term]
+        negative_keywords = [term for term in negative_keywords if term]
 
-        # Build the base must clauses
-        must_clauses = [
-            # Must contain hydrogen-related terms
-            {
-                "bool": {
-                    "should": [
-                        {"match_phrase": {"abstract": "hydrogen"}},
-                        {"match_phrase": {"abstract": "deuterium"}},
-                        {"match_phrase": {"abstract": "protium"}},
-                    ]
-                }
-            },
-            # Must be discontinued/withdrawn
-            {
-                "bool": {
-                    "should": [
-                        {"term": {"legal_status.patent_status": "DISCONTINUED"}},
-                        {"term": {"legal_status.patent_status": "WITHDRAWN"}},
-                        {"term": {"legal_status.patent_status": "REJECTED"}},
-                    ]
-                }
-            },
-        ]
+        must_clauses = []
         
         # Add jurisdiction filter only if jurisdictions are specified
         if jurisdictions is not None and len(jurisdictions) > 0:
@@ -214,25 +221,51 @@ class LensConnector:
         if start_date is not None:
             must_clauses.append({
                 "range": {
-                    "legal_status.discontinued_date": {
+                    "date_published": {
                         "gte": start_date,
                         "lte": end_date,
                     }
                 }
             })
         
-        # Build search keyword clauses
-        should_clauses = [
-            {"match_phrase": {"abstract": term}}
-            for term in include_terms
-        ]
+        # Add patent status filter if provided
+        if patent_status_filter is not None and len(patent_status_filter) > 0:
+            must_clauses.append({
+                "bool": {
+                    "should": [
+                        {"term": {"legal_status.patent_status": status}}
+                        for status in patent_status_filter
+                    ]
+                }
+            })
+        
+        # Build positive keyword clauses (OR logic - match ANY)
+        # Search in both abstract and title for better coverage
+        should_clauses = []
+        for term in positive_keywords:
+            should_clauses.append({
+                "bool": {
+                    "should": [
+                        {"match_phrase": {"abstract": term}},
+                        {"match_phrase": {"biblio.invention_title.text": term}}
+                    ]
+                }
+            })
 
+        # Build negative keyword clauses (AND logic - exclude if ANY match)
+        # Check both abstract and title
         must_not_clauses = []
-        for term in exclude_terms:
-            must_not_clauses.append({"match_phrase": {"abstract": term}})
-            must_not_clauses.append({"match_phrase": {"biblio.invention_title.text": term}})
+        for term in negative_keywords:
+            must_not_clauses.append({
+                "bool": {
+                    "should": [
+                        {"match_phrase": {"abstract": term}},
+                        {"match_phrase": {"biblio.invention_title.text": term}}
+                    ]
+                }
+            })
 
-        # Build the query following the implementation plan structure
+        # Build the query with OR for positive, AND exclusion for negative
         query = {
             "query": {
                 "bool": {
@@ -242,7 +275,7 @@ class LensConnector:
                     "minimum_should_match": 1 if should_clauses else 0,
                 }
             },
-            "size": 50,  # Retrieve 50 candidates for analysis
+            "size": 100,  # Retrieve more candidates for filtering
             "include": [
                 "lens_id",
                 "jurisdiction",
@@ -266,29 +299,113 @@ class LensConnector:
         jurisdiction: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        include_terms: Optional[List[str]] = None,
-        exclude_terms: Optional[List[str]] = None,
+        positive_keywords: Optional[List[str]] = None,
+        negative_keywords: Optional[List[str]] = None,
+        patent_status_filter: Optional[List[str]] = None,
+        language: str = "English",
     ) -> Dict:
         """
-        Convenience method to search a single jurisdiction.
+        Convenience method to search a single jurisdiction with detailed logging.
         
         Args:
             jurisdiction: Single jurisdiction code (e.g., "RU"), or None for no filter
             start_date: Start date in ISO format, or None for infinite lookback
             end_date: End date in ISO format
+            positive_keywords: Keywords to search for (OR logic)
+            negative_keywords: Keywords to exclude (AND logic)
+            patent_status_filter: Optional patent status filter
+            language: Language name for logging purposes
             
         Returns:
-            Search results from Lens.org
+            Search results from Lens.org with metadata about filtering
         """
         jurisdictions = [jurisdiction] if jurisdiction else None
-        query = self.build_anomalous_spark_query(
+        
+        # Build the query
+        query = self.build_keyword_search_query(
             jurisdictions,
             start_date,
             end_date,
-            include_terms=include_terms,
-            exclude_terms=exclude_terms,
+            positive_keywords=positive_keywords,
+            negative_keywords=negative_keywords,
+            patent_status_filter=patent_status_filter,
         )
-        return await self.search_patents(query)
+        
+        # Execute the search
+        result = await self.search_patents(query)
+        
+        # Extract results for additional filtering and logging
+        raw_results = result.get("data", [])
+        total_from_api = result.get("total", 0)
+        
+        # The API already filters by negative keywords in the query,
+        # but we'll do a secondary check and count for logging accuracy
+        filtered_results = []
+        excluded_count = 0
+        
+        for patent in raw_results:
+            # Check if any negative keyword appears in abstract or title
+            abstract_text = ""
+            if "abstract" in patent:
+                if isinstance(patent["abstract"], list):
+                    abstract_text = " ".join([a.get("text", "") for a in patent["abstract"]]).lower()
+                elif isinstance(patent["abstract"], str):
+                    abstract_text = patent["abstract"].lower()
+            
+            title_text = ""
+            if "biblio" in patent and "invention_title" in patent["biblio"]:
+                title_data = patent["biblio"]["invention_title"]
+                if isinstance(title_data, list):
+                    title_text = " ".join([t.get("text", "") for t in title_data]).lower()
+                elif isinstance(title_data, dict):
+                    title_text = title_data.get("text", "").lower()
+                elif isinstance(title_data, str):
+                    title_text = title_data.lower()
+            
+            combined_text = abstract_text + " " + title_text
+            
+            # Check for negative keywords
+            has_negative = False
+            if negative_keywords:
+                for neg_term in negative_keywords:
+                    if neg_term.lower() in combined_text:
+                        has_negative = True
+                        excluded_count += 1
+                        break
+            
+            if not has_negative:
+                filtered_results.append(patent)
+        
+        # Update result with filtered data
+        result["data"] = filtered_results
+        result["filtered_total"] = len(filtered_results)
+        
+        # Generate detailed logging
+        if jurisdiction:
+            country_name = JURISDICTION_NAMES.get(jurisdiction, jurisdiction)
+        else:
+            country_name = "All Countries"
+        
+        # Format keywords for logging (truncate if too long)
+        pos_keywords_str = ", ".join([f"'{kw}'" for kw in (positive_keywords or [])[:3]])
+        if positive_keywords and len(positive_keywords) > 3:
+            pos_keywords_str += f" (+{len(positive_keywords) - 3} more)"
+        
+        neg_keywords_str = ", ".join([f"'{kw}'" for kw in (negative_keywords or [])[:3]])
+        if negative_keywords and len(negative_keywords) > 3:
+            neg_keywords_str += f" (+{len(negative_keywords) - 3} more)"
+        
+        # Create the detailed log message
+        logger.info(
+            f"✅ Completed patent search in {country_name} "
+            f"with {language} keywords: "
+            f"positive={pos_keywords_str or 'none'} and "
+            f"negative={neg_keywords_str or 'none'} "
+            f"with {len(filtered_results)} results "
+            f"(from {total_from_api} API results, {excluded_count} filtered by negative keywords)"
+        )
+        
+        return result
     
     async def get_patent_by_lens_id(self, lens_id: str) -> Optional[Dict]:
         """
@@ -330,16 +447,22 @@ class LensConnector:
 
 
 # Convenience function for simple usage
-async def search_anomalous_patents(
+async def search_patents_by_keywords(
     jurisdictions: List[str],
+    positive_keywords: List[str],
+    negative_keywords: Optional[List[str]] = None,
     days_back: int = 7,
+    patent_status_filter: Optional[List[str]] = None,
 ) -> Dict:
     """
-    Quick search function for the last N days of anomalous patents.
+    Quick search function for the last N days using keyword filtering.
     
     Args:
         jurisdictions: List of jurisdiction codes
+        positive_keywords: Keywords to search for (OR logic)
+        negative_keywords: Keywords to exclude (AND logic)
         days_back: Number of days to search back
+        patent_status_filter: Optional patent status filter
         
     Returns:
         Search results from Lens.org
@@ -348,10 +471,13 @@ async def search_anomalous_patents(
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
     
-    query = connector.build_anomalous_spark_query(
+    query = connector.build_keyword_search_query(
         jurisdictions=jurisdictions,
         start_date=start_date.strftime("%Y-%m-%d"),
         end_date=end_date.strftime("%Y-%m-%d"),
+        positive_keywords=positive_keywords,
+        negative_keywords=negative_keywords,
+        patent_status_filter=patent_status_filter,
     )
     
     return await connector.search_patents(query)
