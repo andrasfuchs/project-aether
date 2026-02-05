@@ -592,12 +592,16 @@ def main():
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
     # --- MAIN CONTENT TABS ---
-    tab_dashboard, tab_results, tab_deepdive, tab_settings = st.tabs([
-        "Dashboard",
-        "Search Results",
-        "Detailed Analysis",
-        "Settings"
-    ])
+    # Check if we should navigate to detailed analysis tab
+    selected_lens_id_for_navigation = st.session_state.get('selected_lens_id_for_navigation')
+    
+    # Determine which tab to show first
+    if selected_lens_id_for_navigation:
+        tab_list = ["Detailed Analysis", "Dashboard", "Search Results", "Settings"]
+    else:
+        tab_list = ["Dashboard", "Search Results", "Detailed Analysis", "Settings"]
+    
+    tab_dashboard, tab_results, tab_deepdive, tab_settings = st.tabs(tab_list)
     
     # --- DASHBOARD TAB ---
     with tab_dashboard:
@@ -667,68 +671,116 @@ def main():
                     "Inventor(s)": formatted_inventors,
                     "Jurisdiction": jurisdiction_name,
                     "Score": f"{a.relevance_score:.1f}",
-                    "Status": status_display,
-                    "Reason": a.status_analysis.refusal_reason
+                    "Status": status_display
                 }
                 data.append(row)
             
-            # Create a dataframe and display it as read-only
+            # Create custom table with clickable Lens ID buttons
             import pandas as pd
             df = pd.DataFrame(data)
             
-            # Add CSS to disable text selection in dataframe
+            # Add CSS to style the custom table
             st.markdown("""
             <style>
-            [data-testid="stDataFrame"] {
-                user-select: none;
-                -webkit-user-select: none;
-                -moz-user-select: none;
-                -ms-user-select: none;
+            .results-table-header {
+                display: grid;
+                grid-template-columns: 1.2fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                gap: 1rem;
+                padding: 1rem;
+                background: rgba(30, 41, 59, 0.5);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px 8px 0 0;
+                font-weight: 600;
+                color: #94A3B8;
+                font-size: 0.85rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                margin-bottom: 0;
             }
-            [data-testid="stDataFrame"] * {
-                user-select: none !important;
-                -webkit-user-select: none !important;
+            
+            .results-table-row {
+                display: grid;
+                grid-template-columns: 1.2fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                gap: 1rem;
+                padding: 1rem;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                align-items: center;
+                transition: background-color 0.2s ease;
+            }
+            
+            .results-table-row:hover {
+                background: rgba(0, 180, 216, 0.05);
+            }
+            
+            .results-table-container {
+                display: flex;
+                flex-direction: column;
+                flex-grow: 1;
+                min-height: 200px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                overflow-y: auto;
+                background: rgba(30, 41, 59, 0.3);
             }
             </style>
             """, unsafe_allow_html=True)
             
-            # Display dataframe with click handling
-            event = st.dataframe(
-                df, 
-                use_container_width=True,
-                selection_mode="single-row",
-                hide_index=True,
-                on_select="rerun",
-                key="results_grid",
-                column_config={
-                    "Score": st.column_config.ProgressColumn(
-                        "Relevance Score",
-                        format="%s",
-                        min_value=0,
-                        max_value=100,
-                    ),
-                }
-            )
+            # Display table header
+            st.markdown("""
+            <div class="results-table-header">
+                <div>Lens ID</div>
+                <div>Patent #</div>
+                <div>Title</div>
+                <div>Inventor(s)</div>
+                <div>Jurisdiction</div>
+                <div>Score</div>
+                <div>Status</div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Handle row selection for navigation to detailed analysis
-            try:
-                if event and isinstance(event, dict) and 'selection' in event and event['selection']:
-                    selection = event['selection']
-                    if 'rows' in selection and selection['rows'] and len(selection['rows']) > 0:
-                        selected_row_index = selection['rows'][0]
-                        selected_row = df.iloc[selected_row_index]
-                        selected_lens_id = selected_row["Lens ID"]
-                        
-                        # Navigate to detailed analysis tab
-                        st.session_state['selected_lens_id_for_analysis'] = selected_lens_id
-            except (KeyError, IndexError, TypeError, AttributeError):
-                # Silently ignore selection errors
-                pass
+            # Display table rows with clickable Lens ID buttons
+            results_container = st.container()
+            with results_container:
+                for idx, row in df.iterrows():
+                    col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
+                    
+                    with col1:
+                        lens_id = row["Lens ID"]
+                        # Extract the original lens_id from the sorted_assessments
+                        original_assessment = next((a for a in sorted_assessments if a.lens_id == lens_id), None)
+                        if st.button(lens_id, key=f"lens_btn_{idx}_{lens_id}", use_container_width=False):
+                            st.session_state['selected_lens_id_for_analysis'] = lens_id
+                            st.session_state['selected_lens_id_for_navigation'] = lens_id
+                            st.rerun()
+                    
+                    with col2:
+                        st.write(row["Patent #"])
+                    
+                    with col3:
+                        st.write(row["Title"])
+                    
+                    with col4:
+                        st.write(row["Inventor(s)"])
+                    
+                    with col5:
+                        st.write(row["Jurisdiction"])
+                    
+                    with col6:
+                        # Display score as a mini progress bar with percentage
+                        score_val = float(row["Score"])
+                        st.progress(score_val / 100, text=f"{row['Score']}%")
+                    
+                    with col7:
+                        st.write(row["Status"])
         else:
             st.info("No results yet. Run an analysis to populate the table.")
 
     # --- DEEP DIVE TAB ---
     with tab_deepdive:
+        # Clear the navigation flag now that we're on the detailed analysis tab
+        if 'selected_lens_id_for_navigation' in st.session_state:
+            del st.session_state['selected_lens_id_for_navigation']
+        
         st.markdown("### Detailed Analysis")
         assessments = st.session_state.get('assessments')
         
