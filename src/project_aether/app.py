@@ -652,9 +652,15 @@ def main():
                 }
                 data.append(row)
             
-            st.dataframe(
-                data, 
+            # Create a dataframe and display it as read-only
+            import pandas as pd
+            df = pd.DataFrame(data)
+            
+            selected_rows = st.dataframe(
+                df, 
                 use_container_width=True,
+                selection_mode="single-row",
+                on_select="rerun",
                 column_config={
                     "Intelligence": st.column_config.TextColumn(
                         "Intelligence",
@@ -669,6 +675,22 @@ def main():
                     ),
                 }
             )
+            
+            # Handle row selection for navigation to detailed analysis
+            try:
+                if selected_rows and "selection" in selected_rows and selected_rows["selection"]:
+                    rows = selected_rows["selection"].get("rows", [])
+                    if rows and len(rows) > 0:
+                        selected_row_index = rows[0]
+                        selected_row = df.iloc[selected_row_index]
+                        selected_lens_id = selected_row["Lens ID"]
+                        
+                        # Set session state for the deep dive tab
+                        st.session_state['selected_lens_id_for_analysis'] = selected_lens_id
+                        st.rerun()
+            except (KeyError, IndexError, TypeError):
+                # Silently ignore selection errors
+                pass
         else:
             st.info("No results yet. Run an analysis to populate the table.")
 
@@ -678,10 +700,25 @@ def main():
         assessments = st.session_state.get('assessments')
         
         if assessments:
+            # Check if a specific lens ID was selected from the results tab
+            selected_lens_id_from_results = st.session_state.get('selected_lens_id_for_analysis')
+            
+            # Determine which lens ID to display
+            available_lens_ids = [a.lens_id for a in assessments]
+            
+            # If a lens ID was set from results tab selection, use it; otherwise use the first one
+            if selected_lens_id_from_results and selected_lens_id_from_results in available_lens_ids:
+                default_index = available_lens_ids.index(selected_lens_id_from_results)
+                # Clear the session state after using it
+                st.session_state['selected_lens_id_for_analysis'] = None
+            else:
+                default_index = 0
+            
             # Selector
             selected_lens_id = st.selectbox(
                 "Select Target for Analysis",
-                options=[a.lens_id for a in assessments],
+                options=available_lens_ids,
+                index=default_index,
                 format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.lens_id == x), 'Unknown')}"
             )
             
@@ -846,8 +883,66 @@ def render_deep_dive(assessment):
     with col1:
         st.markdown("#### Abstract")
         patent_data = next((p for p in st.session_state.get('all_raw_results', []) if p.get('lens_id') == assessment.lens_id), {})
-        abstract_text = patent_data.get('abstract', 'No abstract available')
-        st.info(abstract_text)
+        
+        # Handle abstract with multiple languages
+        abstract_data = patent_data.get('abstract', None)
+        
+        if abstract_data:
+            # If abstract is a list of language objects
+            if isinstance(abstract_data, list):
+                lang_map = {
+                    'en': 'English',
+                    'fr': 'French',
+                    'de': 'German',
+                    'es': 'Spanish',
+                    'it': 'Italian',
+                    'pt': 'Portuguese',
+                    'ru': 'Russian',
+                    'zh': 'Chinese',
+                    'ja': 'Japanese',
+                    'ko': 'Korean',
+                    'hu': 'Hungarian',
+                    'ar': 'Arabic',
+                }
+                
+                # Build dictionary of available languages
+                available_abstracts = {}
+                for abstract_obj in abstract_data:
+                    lang_code = abstract_obj.get('lang', 'unknown').lower()
+                    lang_name = lang_map.get(lang_code, lang_code.upper())
+                    available_abstracts[lang_name] = abstract_obj.get('text', '')
+                
+                # List of preferred languages to show
+                preferred_langs = ['English', 'Hungarian', 'French', 'German', 'Spanish', 'Chinese', 'Russian']
+                
+                # Create tabs for available languages
+                tab_labels = []
+                tab_contents = []
+                
+                for lang in preferred_langs:
+                    if lang in available_abstracts:
+                        tab_labels.append(lang)
+                        tab_contents.append(available_abstracts[lang])
+                
+                # Add any other languages not in the preferred list
+                for lang in sorted(available_abstracts.keys()):
+                    if lang not in preferred_langs:
+                        tab_labels.append(lang)
+                        tab_contents.append(available_abstracts[lang])
+                
+                # Create tabs for available languages
+                if tab_labels:
+                    tabs = st.tabs(tab_labels)
+                    for tab, content in zip(tabs, tab_contents):
+                        with tab:
+                            st.info(content)
+                else:
+                    st.info('No abstract available')
+            else:
+                # If abstract is a simple string
+                st.info(abstract_data)
+        else:
+            st.info('No abstract available')
         
         st.markdown("#### Legal Status Review")
         st.write(f"**Interpretation:** {assessment.status_analysis.interpretation}")
