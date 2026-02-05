@@ -582,7 +582,7 @@ def main():
         
         col_btn, _ = st.columns([1, 0.1])
         with col_btn:
-            run_mission = st.button("Run Analysis", type="primary", use_container_width=True)
+            run_mission = st.button("🔍 Search", type="primary", use_container_width=True)
         
         st.markdown("---")
         
@@ -636,16 +636,29 @@ def main():
             # Sort assessments by relevance_score descending
             sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
             
+            # Reverse mapping from code to jurisdiction name
+            jurisdiction_code_to_name = {v: k for k, v in JURISDICTION_MAP.items()}
+            # Special handling for WO jurisdiction
+            jurisdiction_code_to_name["WO"] = "WO - PCT application"
+            
             # Prepare data for dataframe
             data = []
             for a in sorted_assessments:
+                # Convert jurisdiction code to name
+                jurisdiction_name = jurisdiction_code_to_name.get(a.jurisdiction, a.jurisdiction)
+                
+                # Format title: capitalize first letter, rest lowercase
+                formatted_title = a.title.capitalize() if a.title else ""
+                
+                # Format inventors: title case (each word starts with capital)
+                formatted_inventors = ", ".join([inv.title() for inv in a.inventors]) if a.inventors else "Unknown"
+                
                 row = {
                     "Lens ID": a.lens_id,
                     "Patent #": a.doc_number,
-                    "Title": a.title,
-                    "Inventor(s)": ", ".join(a.inventors) if a.inventors else "Unknown",
-                    "Jurisdiction": a.jurisdiction,
-                    "Intelligence": a.intelligence_value,
+                    "Title": formatted_title,
+                    "Inventor(s)": formatted_inventors,
+                    "Jurisdiction": jurisdiction_name,
                     "Score": f"{a.relevance_score:.1f}",
                     "Status": "Refused" if a.status_analysis.is_refused else "Withdrawn" if a.status_analysis.is_withdrawn else "Other",
                     "Reason": a.status_analysis.refusal_reason
@@ -656,17 +669,31 @@ def main():
             import pandas as pd
             df = pd.DataFrame(data)
             
-            selected_rows = st.dataframe(
+            # Add CSS to disable text selection in dataframe
+            st.markdown("""
+            <style>
+            [data-testid="stDataFrame"] {
+                user-select: none;
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+            }
+            [data-testid="stDataFrame"] * {
+                user-select: none !important;
+                -webkit-user-select: none !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display dataframe with click handling
+            event = st.dataframe(
                 df, 
                 use_container_width=True,
                 selection_mode="single-row",
+                hide_index=True,
                 on_select="rerun",
+                key="results_grid",
                 column_config={
-                    "Intelligence": st.column_config.TextColumn(
-                        "Intelligence",
-                        help="Calculated Intelligence Value",
-                        validate="^(HIGH|MEDIUM|LOW)$"
-                    ),
                     "Score": st.column_config.ProgressColumn(
                         "Relevance Score",
                         format="%s",
@@ -678,17 +705,16 @@ def main():
             
             # Handle row selection for navigation to detailed analysis
             try:
-                if selected_rows and "selection" in selected_rows and selected_rows["selection"]:
-                    rows = selected_rows["selection"].get("rows", [])
-                    if rows and len(rows) > 0:
-                        selected_row_index = rows[0]
+                if event and isinstance(event, dict) and 'selection' in event and event['selection']:
+                    selection = event['selection']
+                    if 'rows' in selection and selection['rows'] and len(selection['rows']) > 0:
+                        selected_row_index = selection['rows'][0]
                         selected_row = df.iloc[selected_row_index]
                         selected_lens_id = selected_row["Lens ID"]
                         
-                        # Set session state for the deep dive tab
+                        # Navigate to detailed analysis tab
                         st.session_state['selected_lens_id_for_analysis'] = selected_lens_id
-                        st.rerun()
-            except (KeyError, IndexError, TypeError):
+            except (KeyError, IndexError, TypeError, AttributeError):
                 # Silently ignore selection errors
                 pass
         else:
