@@ -416,28 +416,20 @@ def main():
     
     # --- SIDEBAR CONFIGURATION ---
     with st.sidebar:
-        st.markdown(
-            "<h2 style='text-align: center; color: #00B4D8;'>Filters</h2>",
-            unsafe_allow_html=True
-        )
-        st.markdown("---")
-
         from project_aether.core.config import get_config
         config = get_config()
         
         # Use infinite date window (no date filtering)
         end_date = datetime.now()
         start_date = None
-               
-        st.write("#### Search Language")
-        
+                     
         # Initialize language selection in session state
         if 'selected_language' not in st.session_state:
             st.session_state.selected_language = "English"
         
         language_options = list(LANGUAGE_MAP.keys())
         selected_language_name = st.selectbox(
-            "Query Language",
+            "Language",
             options=language_options,
             index=language_options.index(st.session_state.selected_language),
             help="Language for the search query. The API will use this language for multi-lingual search."
@@ -450,15 +442,14 @@ def main():
         # Jurisdiction is set to ALL by default (no filter)
         selected_jurisdictions = None
 
-        st.markdown("---")
-        st.write("#### Search Keywords")
-
         keyword_config = st.session_state.get('keyword_config', DEFAULT_KEYWORDS)
         include_terms, exclude_terms = get_active_english_keywords(keyword_config)
         cache = st.session_state.get('keyword_cache', {})
         widget_version = st.session_state.get('keyword_widget_version', 0)
 
         with st.expander("Current keyword set", expanded=True):
+            set_label = st.text_input("Name (optional)", key="sidebar_set_label", placeholder="e.g. My Custom Keywords")
+
             include_text = st.text_area(
                 "Include terms",
                 value=", ".join(include_terms),
@@ -479,8 +470,6 @@ def main():
             st.session_state['keyword_config'] = keyword_config
 
             st.caption(f"Include: {len(updated_include)} terms | Exclude: {len(updated_exclude)} terms")
-
-            set_label = st.text_input("Name (optional)", key="sidebar_set_label", placeholder="e.g. My Custom Keywords")
 
             if st.button("💾 Save", use_container_width=True):
                 ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
@@ -895,11 +884,19 @@ def render_deep_dive(assessment):
     if assessment.intelligence_value == "HIGH": color = "#EF4444"
     elif assessment.intelligence_value == "MEDIUM": color = "#F59E0B"
     
+    # Generate Lens.org link
+    lens_url = f"https://www.lens.org/lens/patent/{assessment.lens_id}/frontpage"
+    
     st.markdown(f"""
     <div class="glass-card" style="border-top: 4px solid {color}">
         <h2>{assessment.title}</h2>
         <p style="font-family: monospace; color: {color}; font-size: 1.2rem;">
             {assessment.lens_id} | {assessment.jurisdiction} | {assessment.doc_number}
+        </p>
+        <p style="margin-top: 10px;">
+            <a href="{lens_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">
+                🔗 View on Lens.org
+            </a>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -975,17 +972,45 @@ def render_deep_dive(assessment):
         st.write(f"**Refusal Reason:** {assessment.status_analysis.refusal_reason}")
     
     with col2:
-        st.markdown("#### AI Analysis")
-        st.progress(assessment.relevance_score / 100, text=f"Relevance: {assessment.relevance_score:.1f}%")
+        # Relevance section with tooltip
+        st.markdown("""
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <h4 style="margin: 0;">AI Analysis</h4>
+        </div>
+        """, unsafe_allow_html=True)
         
-        st.markdown("**Tags:**")
+        # Relevance score with icon and tooltip
+        relevance_tooltip = "Relevance score indicates how closely this patent matches the search criteria. Based on keyword matching in title, abstract, and claims, combined with context analysis."
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 15px; margin-bottom: 10px;">
+            <strong>Relevance</strong>
+            <span style="cursor: help; color: #94A3B8;" title="{relevance_tooltip}">?</span>
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(assessment.relevance_score / 100, text=f"{assessment.relevance_score:.1f}%")
+        
+        # Tags section with icon and tooltip
+        tags_tooltip = "Classification tags identify key technical domains and subject areas covered by the patent. These help categorize and filter related technologies."
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
+            <strong>Tags</strong>
+            <span style="cursor: help; color: #94A3B8;" title="{tags_tooltip}">?</span>
+        </div>
+        """, unsafe_allow_html=True)
         if assessment.classification_tags:
             for tag in assessment.classification_tags:
                 st.markdown(f"`{tag}`")
         else:
             st.caption("No specific tags")
             
-        st.markdown("**Notable Features:**")
+        # Notable Features section with icon and tooltip
+        features_tooltip = "Notable features highlight unusual or significant technical characteristics detected in the patent, such as anomalous energy patterns or heat signatures."
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
+            <strong>Notable Features</strong>
+            <span style="cursor: help; color: #94A3B8;" title="{features_tooltip}">?</span>
+        </div>
+        """, unsafe_allow_html=True)
         if assessment.is_anomalous:
             st.markdown("`Heat signature detected`")
         else:
