@@ -102,34 +102,26 @@ def render_deep_dive(assessment):
                 # Create tabs for available languages
                 if tab_labels:
                     tabs = st.tabs(tab_labels)
-                    for tab, content in zip(tabs, tab_contents):
+                    
+                    for tab_index, (tab, content) in enumerate(zip(tabs, tab_contents)):
                         with tab:
                             # Handle auto-translated Hungarian tab
                             if content is None:
                                 # This is the auto-translated Hungarian tab
                                 translation_key = f"hungarian_translation_{assessment.lens_id}"
+                                translated_content = st.session_state.get(translation_key, None)
                                 
-                                # Check if we have a cached translation for this patent
-                                if translation_key not in st.session_state:
-                                    # Load abstract cache from disk
-                                    abstract_cache = load_abstract_cache()
+                                if translated_content is None:
+                                    # Translation not yet requested/loaded
+                                    english_abstract = available_abstracts.get("English", "")
                                     
-                                    # Check if translation is in disk cache
-                                    cached_translation = get_cached_abstract_translation(
-                                        abstract_cache, assessment.lens_id, "Hungarian"
-                                    )
-                                    
-                                    if cached_translation:
-                                        # Use cached translation from disk
-                                        st.session_state[translation_key] = cached_translation
-                                        st.info(cached_translation)
-                                    else:
-                                        # Try to get English abstract for translation
-                                        english_abstract = available_abstracts.get("English", "")
-                                        
-                                        if english_abstract:
-                                            api_key = os.getenv("GOOGLE_API_KEY")
-                                            if api_key:
+                                    if english_abstract:
+                                        api_key = os.getenv("GOOGLE_API_KEY")
+                                        if api_key:
+                                            if st.button("Translate to Hungarian", key=f"translate_btn_{assessment.lens_id}"):
+                                                # Load abstract cache from disk
+                                                abstract_cache = load_abstract_cache()
+                                                
                                                 try:
                                                     with st.spinner("Translating abstract to Hungarian..."):
                                                         translated = translate_text_with_llm(
@@ -143,23 +135,19 @@ def render_deep_dive(assessment):
                                                         abstract_cache, assessment.lens_id, "Hungarian", translated
                                                     )
                                                     save_abstract_cache(abstract_cache)
-                                                    st.info(translated)
+                                                    st.rerun()
                                                 except Exception as e:
                                                     st.error(f"Translation failed: {str(e)}")
-                                                    st.session_state[translation_key] = ""
-                                            else:
-                                                st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
-                                                st.session_state[translation_key] = ""
                                         else:
-                                            st.info("No English abstract available for translation.")
-                                            st.session_state[translation_key] = ""
-                                else:
-                                    # Show cached translation from session state
-                                    translated_content = st.session_state.get(translation_key, "")
-                                    if translated_content:
-                                        st.info(translated_content)
+                                            st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
                                     else:
-                                        st.info("Translation not available.")
+                                        st.info("No English abstract available for translation.")
+                                elif translated_content == "":
+                                    # Translation was attempted but failed
+                                    st.info("Translation not available.")
+                                else:
+                                    # Show cached translation
+                                    st.info(translated_content)
                             else:
                                 # Regular language tab
                                 st.info(content)
