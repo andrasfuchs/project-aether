@@ -13,7 +13,7 @@ from project_aether.core.keyword_translation import (
 )
 from project_aether.services.search import run_patent_search
 from project_aether.ui.dashboard import render_dashboard_metrics, show_placeholder_dashboard
-from project_aether.ui.deepdive import render_deep_dive_tab
+from project_aether.ui.analysis import render_deep_dive_tab
 from project_aether.ui.results import render_results_tab
 from project_aether.ui.sidebar import render_sidebar
 from project_aether.ui.styles import inject_global_styles
@@ -140,7 +140,7 @@ def main():
     config, selected_language_code, start_date, end_date, run_mission = render_sidebar(LANGUAGE_MAP)
 
     # --- MAIN CONTENT TABS ---
-    tab_dashboard, tab_results, tab_deepdive, tab_settings = st.tabs([
+    tab_dashboard, tab_results, tab_analysis, tab_settings = st.tabs([
         "Dashboard",
         "Search Results",
         "Detailed Analysis",
@@ -168,8 +168,8 @@ def main():
     with tab_results:
         render_results_tab(st.session_state.get("assessments"), JURISDICTION_MAP)
 
-    # --- DEEP DIVE TAB ---
-    with tab_deepdive:
+    # --- ANALYSIS TAB ---
+    with tab_analysis:
         render_deep_dive_tab(st.session_state.get("assessments"))
 
     # --- SETTINGS TAB ---

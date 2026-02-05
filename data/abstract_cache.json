@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "translations": {
+    "002-653-458-139-620": {
+      "Hungarian": {
+        "text": "Eljárást és berendezést ismertetünk plazma szigetelésére turbulens hőszigetelés alkalmazásával, termonukleáris hőmérsékletek megközelítése céljából. Ez magában foglal egy előre meghatározott méretű, fém-hidridből készült üreges hengert, amelyet egy külső fémhenger vesz körül, amely lezárja az üreges hengert, annak végeit is beleértve. Deutérium- és tríciumgáz keverékét helyezik az üreges hengerbe körülbelül 1,5 atmoszféra nyomáson, és a hengerekre egymás után segéd- és főtápforrásokat kapcsolnak, hogy plazmát hozzanak létre, illetve elektronsugarat injektáljanak a plazmába. A hővezetési tényezőt a kialakuló elektronturbulencia csökkenti.",
+        "translated_at": "2026-02-05T13:46:30.635260"
+      }
+    },
+    "041-918-259-940-007": {
+      "Hungarian": {
+        "text": "TRISOPS típusú termonukleáris reaktor, amelyben plazma örvénystruktúrákat koaxiális théta-pinch ágyúk generálnak, ahol a plazma örvénystruktúrákat másodlagos kompresszióval sűrítik és erősítik, amelyet stabilizált összeomló lítiumon vagy FLIBE-n, vagy más alkalmas olvadt bélésen keresztül ható kompressziós tekercsek alkalmazásával biztosítanak. Az olvadt fém bélést egy tűzálló fémhálóra viszik fel, amely alapesetben egy megfelelő vákuumkamra belső felületével szomszédosan helyezkedik el. Ezt a hálót a vákuumkamra belső felületének közelében egy csuklós, összecsukható ketrecszerkezet tartja, amely a kamra középvonala felé összecsukható, és az összeomlást követően a hálót a kamra falával szomszédos, kiterjesztett konfigurációba állítja vissza.",
+        "translated_at": "2026-02-05T13:48:28.679787"
+      }
+    }
+  },
+  "updated_at": "2026-02-05T13:48:28.680788"
+}

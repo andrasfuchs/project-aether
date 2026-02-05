@@ -1,4 +1,12 @@
 import streamlit as st
+import os
+from project_aether.core.keyword_translation import (
+    translate_text_with_llm,
+    load_abstract_cache,
+    save_abstract_cache,
+    get_cached_abstract_translation,
+    set_cached_abstract_translation,
+)
 
 
 def render_deep_dive(assessment):
@@ -85,15 +93,76 @@ def render_deep_dive(assessment):
                     if lang not in preferred_langs:
                         tab_labels.append(lang)
                         tab_contents.append(available_abstracts[lang])
+                
+                # Add Hungarian (auto-translated) tab if not already present in available abstracts
+                if "Hungarian" not in available_abstracts:
+                    tab_labels.append("Hungarian (auto-translated)")
+                    tab_contents.append(None)  # Placeholder for auto-translated content
 
                 # Create tabs for available languages
                 if tab_labels:
                     tabs = st.tabs(tab_labels)
                     for tab, content in zip(tabs, tab_contents):
                         with tab:
-                            st.info(content)
-                else:
-                    st.info("No abstract available")
+                            # Handle auto-translated Hungarian tab
+                            if content is None:
+                                # This is the auto-translated Hungarian tab
+                                translation_key = f"hungarian_translation_{assessment.lens_id}"
+                                
+                                # Check if we have a cached translation for this patent
+                                if translation_key not in st.session_state:
+                                    # Load abstract cache from disk
+                                    abstract_cache = load_abstract_cache()
+                                    
+                                    # Check if translation is in disk cache
+                                    cached_translation = get_cached_abstract_translation(
+                                        abstract_cache, assessment.lens_id, "Hungarian"
+                                    )
+                                    
+                                    if cached_translation:
+                                        # Use cached translation from disk
+                                        st.session_state[translation_key] = cached_translation
+                                        st.info(cached_translation)
+                                    else:
+                                        # Try to get English abstract for translation
+                                        english_abstract = available_abstracts.get("English", "")
+                                        
+                                        if english_abstract:
+                                            api_key = os.getenv("GOOGLE_API_KEY")
+                                            if api_key:
+                                                try:
+                                                    with st.spinner("Translating abstract to Hungarian..."):
+                                                        translated = translate_text_with_llm(
+                                                            english_abstract,
+                                                            "Hungarian",
+                                                            api_key
+                                                        )
+                                                    # Cache translation to both session state and disk
+                                                    st.session_state[translation_key] = translated
+                                                    set_cached_abstract_translation(
+                                                        abstract_cache, assessment.lens_id, "Hungarian", translated
+                                                    )
+                                                    save_abstract_cache(abstract_cache)
+                                                    st.info(translated)
+                                                except Exception as e:
+                                                    st.error(f"Translation failed: {str(e)}")
+                                                    st.session_state[translation_key] = ""
+                                            else:
+                                                st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
+                                                st.session_state[translation_key] = ""
+                                        else:
+                                            st.info("No English abstract available for translation.")
+                                            st.session_state[translation_key] = ""
+                                else:
+                                    # Show cached translation from session state
+                                    translated_content = st.session_state.get(translation_key, "")
+                                    if translated_content:
+                                        st.info(translated_content)
+                                    else:
+                                        st.info("Translation not available.")
+                            else:
+                                # Regular language tab
+                                st.info(content)
             else:
                 # If abstract is a simple string
                 st.info(abstract_data)
@@ -168,8 +237,6 @@ def render_deep_dive(assessment):
 
 
 def render_deep_dive_tab(assessments):
-    st.markdown("### Detailed Analysis")
-
     if not assessments:
         st.info("No analysis data available yet.")
         return
@@ -190,7 +257,7 @@ def render_deep_dive_tab(assessments):
 
     # Selector
     selected_lens_id = st.selectbox(
-        "Select Target for Analysis",
+        "",
         options=available_lens_ids,
         index=default_index,
         format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.lens_id == x), 'Unknown')}",

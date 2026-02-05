@@ -96,7 +96,7 @@ class ReviewArtifact:
 
 
 @dataclass
-class DeepDiveArtifact:
+class AnalysisArtifact:
     """
     Detailed analysis of a single patent.
     Rendered as a markdown report with diagrams.
@@ -141,7 +141,7 @@ class DeepDiveArtifact:
             Markdown-formatted report
         """
         lines = [
-            f"# Deep Dive: {self.title}",
+            f"# Analysis: {self.title}",
             "",
             f"**Lens ID:** {self.lens_id}  ",
             f"**Patent Number:** {self.patent_number}  ",
@@ -362,7 +362,7 @@ class ArtifactGenerator:
         self,
         assessment: Dict[str, Any],
         patent_data: Dict[str, Any],
-    ) -> DeepDiveArtifact:
+    ) -> AnalysisArtifact:
         """
         Create a deep dive artifact for a single patent.
         
@@ -419,7 +419,7 @@ class ArtifactGenerator:
         else:
             abstract = str(abstract_data) if abstract_data else "No abstract available"
         
-        artifact = DeepDiveArtifact(
+        artifact = AnalysisArtifact(
             lens_id=assessment.get("lens_id", "UNKNOWN"),
             patent_number=assessment.get("doc_number", "UNKNOWN"),
             jurisdiction=assessment.get("jurisdiction", "UNKNOWN"),

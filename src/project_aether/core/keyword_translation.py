@@ -256,3 +256,149 @@ def _extract_json(text: str) -> Dict[str, Any]:
         except Exception:
             return {}
     return {}
+
+
+def get_abstract_cache_path() -> Path:
+    """Get the path to the abstract translation cache file."""
+    config = get_config()
+    return config.database_path.parent / "abstract_cache.json"
+
+
+def _empty_abstract_cache() -> Dict[str, Any]:
+    """Create an empty abstract translation cache structure."""
+    return {
+        "version": CACHE_VERSION,
+        "translations": {},
+        "updated_at": _utc_now(),
+    }
+
+
+def load_abstract_cache(path: Optional[Path] = None) -> Dict[str, Any]:
+    """Load the abstract translation cache from disk."""
+    cache_path = path or get_abstract_cache_path()
+    if not cache_path.exists():
+        return _empty_abstract_cache()
+
+    try:
+        with cache_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.setdefault("translations", {})
+        data.setdefault("version", CACHE_VERSION)
+        data.setdefault("updated_at", _utc_now())
+        return data
+    except Exception:
+        return _empty_abstract_cache()
+
+
+def save_abstract_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> None:
+    """Save the abstract translation cache to disk."""
+    cache_path = path or get_abstract_cache_path()
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache["updated_at"] = _utc_now()
+    with cache_path.open("w", encoding="utf-8") as handle:
+        json.dump(cache, handle, indent=2, ensure_ascii=False)
+
+
+def get_cached_abstract_translation(
+    cache: Dict[str, Any],
+    lens_id: str,
+    target_language: str,
+) -> Optional[str]:
+    """
+    Get a cached abstract translation.
+    
+    Args:
+        cache: The abstract cache dictionary
+        lens_id: The patent lens ID
+        target_language: The target language name
+    
+    Returns:
+        The cached translation, or None if not available
+    """
+    return cache.get("translations", {}).get(lens_id, {}).get(target_language)
+
+
+def set_cached_abstract_translation(
+    cache: Dict[str, Any],
+    lens_id: str,
+    target_language: str,
+    translated_text: str,
+) -> None:
+    """
+    Cache an abstract translation.
+    
+    Args:
+        cache: The abstract cache dictionary
+        lens_id: The patent lens ID
+        target_language: The target language name
+        translated_text: The translated abstract text
+    """
+    translations = cache.setdefault("translations", {})
+    lens_translations = translations.setdefault(lens_id, {})
+    lens_translations[target_language] = {
+        "text": translated_text,
+        "translated_at": _utc_now(),
+    }
+
+
+def translate_text_with_llm(
+    text: str,
+    target_language: str,
+    api_key: str,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """
+    Translate arbitrary text to a target language using the LLM.
+    
+    Args:
+        text: The text to translate
+        target_language: The target language name (e.g., "Hungarian")
+        api_key: Google API key for LLM access
+        model: The LLM model to use
+    
+    Returns:
+        The translated text, or the original text if translation fails
+    """
+    if not text or not text.strip():
+        return text
+    
+    system_prompt = (
+        f"You are a technical translator specializing in patent documents. "
+        f"Translate the following text to {target_language}. "
+        f"Preserve technical terms, acronyms, and chemical formulas. "
+        f"Provide only the translated text without any explanation or commentary."
+    )
+    
+    llm = ChatGoogleGenerativeAI(
+        model=model,
+        google_api_key=api_key,
+        temperature=0.2,
+        model_kwargs={
+            "thinking_config": {
+                "thinking_budget": 1024
+            }
+        }
+    )
+    
+    response = llm.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=text),
+    ])
+    
+    # Handle response.content which might be a string or other type
+    content = response.content
+    if isinstance(content, list):
+        # If content is a list of message parts, extract text from each part
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and 'text' in part:
+                text_parts.append(part['text'])
+            elif isinstance(part, str):
+                text_parts.append(part)
+            else:
+                text_parts.append(str(part))
+        content = " ".join(text_parts)
+    elif not isinstance(content, str):
+        content = str(content)
+    
+    return content.strip()
