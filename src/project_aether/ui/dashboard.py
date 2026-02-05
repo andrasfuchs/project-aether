@@ -1,11 +1,12 @@
 import streamlit as st
 
 
-def render_metric_card(label, value, subtext="", color="#00B4D8"):
+def render_metric_card(label, value, subtext="", color="#00B4D8", dimmed=False):
     """Helper to render a custom HTML metric card."""
+    dim_style = "opacity: 0.55; filter: grayscale(0.35);" if dimmed else ""
     st.markdown(
         f"""
-    <div class="glass-card" style="border-left: 4px solid {color};">
+    <div class="glass-card" style="border-left: 4px solid {color}; {dim_style}">
         <div class="metric-label">{label}</div>
         <div class="metric-value" style="color: {color};">{value}</div>
         <div style="color: #64748b; font-size: 0.8rem; margin-top: 0.5rem;">{subtext}</div>

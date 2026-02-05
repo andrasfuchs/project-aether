@@ -17,7 +17,7 @@ from project_aether.core.keyword_translation import (
 )
 from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.tools.lens_api import LensConnector
-from project_aether.ui.dashboard import render_metric_card
+from project_aether.ui.dashboard import render_metric_card, show_placeholder_dashboard
 from project_aether.utils.artifacts import ArtifactGenerator
 
 logger = logging.getLogger("ProjectAether")
@@ -26,26 +26,60 @@ logger = logging.getLogger("ProjectAether")
 def render_dashboard(dashboard_container, dashboard, status_text, progress_percent):
     """Render the dashboard summary cards."""
     with dashboard_container.container():
-        st.markdown(f"### Search Status: {status_text} (Ref: {dashboard.mission_id})")
+        if progress_percent <= 0:
+            show_placeholder_dashboard()
+            return
 
-        st.progress(progress_percent)
+        dimmed = 0 < progress_percent < 100
+        dim_style = "opacity: 0.6; filter: grayscale(0.35);" if dimmed else ""
+
+        st.markdown(
+            f"<div style=\"{dim_style}\">### Search Status: {status_text} (Ref: {dashboard.mission_id})</div>",
+            unsafe_allow_html=True,
+        )
+
+        if dimmed:
+            st.markdown(
+                f"<div style=\"{dim_style}\">Progress: {progress_percent}%</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.progress(progress_percent)
 
         col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             render_metric_card(
-                "Total Results", str(dashboard.total_patents_searched), "Patents Scanned", "#94A3B8"
+                "Total Results",
+                str(dashboard.total_patents_searched),
+                "Patents Scanned",
+                "#94A3B8",
+                dimmed=dimmed,
             )
         with col2:
             render_metric_card(
-                "High Value", str(dashboard.high_priority_count), "Critical Findings", "#EF4444"
+                "High Value",
+                str(dashboard.high_priority_count),
+                "Critical Findings",
+                "#EF4444",
+                dimmed=dimmed,
             )
         with col3:
             render_metric_card(
-                "Medium Value", str(dashboard.medium_priority_count), "Potential Interest", "#F59E0B"
+                "Medium Value",
+                str(dashboard.medium_priority_count),
+                "Potential Interest",
+                "#F59E0B",
+                dimmed=dimmed,
             )
         with col4:
-            render_metric_card("Low Value", str(dashboard.anomalous_count), "Probable Noise", "#00B4D8")
+            render_metric_card(
+                "Low Value",
+                str(dashboard.anomalous_count),
+                "Probable Noise",
+                "#00B4D8",
+                dimmed=dimmed,
+            )
 
 
 def _build_dashboard_snapshot(total, high, medium, low, mission_id="IN-PROGRESS"):
