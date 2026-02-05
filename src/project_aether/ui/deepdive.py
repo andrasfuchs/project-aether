@@ -100,10 +100,6 @@ def render_deep_dive(assessment):
         else:
             st.info("No abstract available")
 
-        st.markdown("#### Legal Status Review")
-        st.write(f"**Interpretation:** {assessment.status_analysis.interpretation}")
-        st.write(f"**Refusal Reason:** {assessment.status_analysis.refusal_reason}")
-
     with col2:
         # Relevance section with tooltip
         st.markdown(

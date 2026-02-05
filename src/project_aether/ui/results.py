@@ -3,8 +3,6 @@ import pandas as pd
 
 
 def render_results_tab(assessments, jurisdiction_map):
-    st.markdown("### Search Results")
-
     if not assessments:
         st.info("No results yet. Run an analysis to populate the table.")
         return
@@ -103,36 +101,8 @@ def render_results_tab(assessments, jurisdiction_map):
                 border-radius: 8px;
                 overflow-y: auto;
                 background: rgba(30, 41, 59, 0.3);
-            }
+            }                
 
-            /* Compact Lens ID button styling */
-            div[data-testid="stButton"] > button {
-                font-size: 0.7rem !important;
-                padding: 0.1rem 0.4rem !important;
-                margin: 0.1rem 0 0.2rem 0 !important;
-                letter-spacing: 0.03em !important;
-                text-transform: none !important;
-                min-height: 2.7rem !important;
-                height: auto !important;
-                line-height: 1.1 !important;
-            }
-
-            div[data-testid="stButton"] > button span,
-            div[data-testid="stButton"] > button p,
-            div[data-testid="stButton"] > button div {
-                font-size: 0.7rem !important;
-                line-height: 1.1 !important;
-            }
-
-            /* Restore sidebar button styling */
-            section[data-testid="stSidebar"] div[data-testid="stButton"] > button {
-                font-size: 0.9rem !important;
-                padding: 0.8rem 2.5rem !important;
-                margin: 1rem 0 !important;
-                letter-spacing: 0.15em !important;
-                text-transform: uppercase !important;
-            }
-            </style>
             """,
         unsafe_allow_html=True,
     )
@@ -161,7 +131,7 @@ def render_results_tab(assessments, jurisdiction_map):
 
             with col1:
                 lens_id = row["Lens ID"]
-                if st.button(lens_id, key=f"lens_btn_{idx}_{lens_id}", use_container_width=True, ):
+                if st.button("LOAD", key=f"lens_btn_{idx}_{lens_id}", use_container_width=True):
                     st.session_state["selected_lens_id_for_analysis"] = lens_id
 
             with col2:
