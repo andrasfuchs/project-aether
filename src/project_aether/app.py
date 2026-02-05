@@ -642,6 +642,24 @@ def main():
                 # Format inventors: title case (each word starts with capital)
                 formatted_inventors = ", ".join([inv.title() for inv in a.inventors]) if a.inventors else "Unknown"
                 
+                # Determine status with original status for "Other" category
+                if a.status_analysis.is_refused:
+                    status_display = "Refused"
+                elif a.status_analysis.is_withdrawn:
+                    status_display = "Withdrawn"
+                elif a.status_analysis.is_expired:
+                    status_display = "Expired"
+                elif a.status_analysis.is_inactive:
+                    status_display = "Inactive"
+                elif a.status_analysis.is_active:
+                    status_display = "Active"
+                elif a.status_analysis.is_pending:
+                    status_display = "Pending"
+                else:
+                    # For "Other" status, include original status if available
+                    original = a.status_analysis.original_status or "UNKNOWN"
+                    status_display = f"Other ({original})"
+                
                 row = {
                     "Lens ID": a.lens_id,
                     "Patent #": a.doc_number,
@@ -649,7 +667,7 @@ def main():
                     "Inventor(s)": formatted_inventors,
                     "Jurisdiction": jurisdiction_name,
                     "Score": f"{a.relevance_score:.1f}",
-                    "Status": "Refused" if a.status_analysis.is_refused else "Withdrawn" if a.status_analysis.is_withdrawn else "Other",
+                    "Status": status_display,
                     "Reason": a.status_analysis.refusal_reason
                 }
                 data.append(row)
@@ -1001,9 +1019,11 @@ def render_deep_dive(assessment):
 
 
 def run_patent_search(language_code, start_date, end_date):
-    """Execute the patent search with specified language."""
+    """Execute the patent search with specified language, with live dashboard updates."""
     
+    # Create containers for status message and live dashboard
     status_container = st.empty()
+    dashboard_container = st.empty()
     progress_bar = st.progress(0)
     
     try:
@@ -1050,12 +1070,8 @@ def run_patent_search(language_code, start_date, end_date):
                 status_container.info(f"Using cached translations for {search_language_name}")
         
         all_results = []
-        
-        total_steps = 3  # init + search + analysis + generation
-        current_step = 1
         progress_bar.progress(33)
-        
-        status_container.markdown(f"Searching with language code {language_code}...")
+        status_container.markdown(f"Searching Lens.org with language: **{search_language_name or language_code}**...")
         
         try:
             # No jurisdiction filtering - search all with specified language
@@ -1074,19 +1090,71 @@ def run_patent_search(language_code, start_date, end_date):
         except Exception as e:
             logger.error(f"Search failed: {e}")
             st.error(f"Search failed: {e}")
+            return
         
         st.session_state['all_raw_results'] = all_results
-
-        current_step += 1
-        progress_bar.progress(int((current_step / total_steps) * 100))
+        
+        if not all_results:
+            status_container.warning("No patents found matching your criteria.")
+            return
+        
+        progress_bar.progress(50)
         status_container.markdown(f"Analyzing {len(all_results)} candidates for key signals...")
         
-        assessments = analyst.analyze_batch(all_results)
+        # Analyze patents incrementally and update dashboard in real-time
+        assessments = []
+        high_count = 0
+        medium_count = 0
+        low_count = 0
         
-        current_step += 1
-        progress_bar.progress(100)
-        status_container.markdown("Compiling dashboard outputs...")
+        for i, patent_record in enumerate(all_results):
+            try:
+                assessment = analyst.analyze_patent(patent_record)
+                assessments.append(assessment)
+                
+                # Count by intelligence value
+                if assessment.intelligence_value == "HIGH":
+                    high_count += 1
+                elif assessment.intelligence_value == "MEDIUM":
+                    medium_count += 1
+                else:
+                    low_count += 1
+                
+                # Update dashboard every patent (or every N patents for performance)
+                if (i + 1) % max(1, len(all_results) // 10) == 0 or (i + 1) == len(all_results):
+                    # Update status
+                    percent_done = int(50 + ((i + 1) / len(all_results)) * 45)
+                    progress_bar.progress(percent_done)
+                    status_container.markdown(f"Analyzing patent {i + 1} of {len(all_results)}...")
+                    
+                    # Render live dashboard
+                    with dashboard_container.container():
+                        st.markdown(f"### Search Status: In Progress ({i + 1}/{len(all_results)})")
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        
+                        with col1:
+                            render_metric_card("Total Results", str(i + 1), "Patents Analyzed", "#94A3B8")
+                        with col2:
+                            render_metric_card("High Value", str(high_count), "Critical Findings", "#EF4444")
+                        with col3:
+                            render_metric_card("Medium Value", str(medium_count), "Potential Interest", "#F59E0B")
+                        with col4:
+                            render_metric_card("Low Value", str(low_count), "Probable Noise", "#00B4D8")
+                    
+                    if assessment.intelligence_value == "HIGH":
+                        logger.info(
+                            f"HIGH VALUE TARGET: {assessment.lens_id} "
+                            f"({assessment.jurisdiction}) - {assessment.summary}"
+                        )
+                        
+            except Exception as e:
+                logger.error(f"Failed to analyze patent: {e}")
         
+        progress_bar.progress(95)
+        status_container.markdown("Compiling final dashboard...")
+        
+        # Create final dashboard artifact
         dashboard = generator.create_dashboard_artifact(
             assessments=[a.to_dict() for a in assessments],
             jurisdictions=["ALL"]
@@ -1095,9 +1163,27 @@ def run_patent_search(language_code, start_date, end_date):
         st.session_state['assessments'] = assessments
         st.session_state['dashboard'] = dashboard
         
-        status_container.success("Analysis complete. Dashboard updated.")
+        progress_bar.progress(100)
+        
+        # Render final dashboard
+        with dashboard_container.container():
+            st.markdown(f"### Search Status: Completed (Ref: {dashboard.mission_id})")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                render_metric_card("Total Results", str(dashboard.total_patents_searched), "Patents Scanned", "#94A3B8")
+            with col2:
+                render_metric_card("High Value", str(dashboard.high_priority_count), "Critical Findings", "#EF4444")
+            with col3:
+                render_metric_card("Medium Value", str(dashboard.medium_priority_count), "Potential Interest", "#F59E0B")
+            with col4:
+                render_metric_card("Low Value", str(dashboard.anomalous_count), "Probable Noise", "#00B4D8")
+        
+        status_container.success("Analysis complete. Results available in Search Results tab.")
         time.sleep(2)
         status_container.empty()
+        progress_bar.empty()
         st.rerun()
 
     except ImportError as e:

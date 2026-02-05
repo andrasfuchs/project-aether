@@ -28,11 +28,16 @@ class StatusAnalysis:
     is_refused: bool
     is_withdrawn: bool
     is_lapsed: bool
+    is_expired: bool
+    is_inactive: bool
+    is_active: bool
+    is_pending: bool
     severity: StatusSeverity
     refusal_reason: str
     code_found: Optional[str]
     jurisdiction: str
     interpretation: str
+    original_status: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -40,11 +45,16 @@ class StatusAnalysis:
             "is_refused": self.is_refused,
             "is_withdrawn": self.is_withdrawn,
             "is_lapsed": self.is_lapsed,
+            "is_expired": self.is_expired,
+            "is_inactive": self.is_inactive,
+            "is_active": self.is_active,
+            "is_pending": self.is_pending,
             "severity": self.severity.value,
             "refusal_reason": self.refusal_reason,
             "code_found": self.code_found,
             "jurisdiction": self.jurisdiction,
             "interpretation": self.interpretation,
+            "original_status": self.original_status,
         }
 
 
@@ -224,15 +234,21 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
         is_refused=False,
         is_withdrawn=False,
         is_lapsed=False,
+        is_expired=False,
+        is_inactive=False,
+        is_active=False,
+        is_pending=False,
         severity=StatusSeverity.UNKNOWN,
         refusal_reason="Unknown",
         code_found=None,
         jurisdiction=jurisdiction,
         interpretation="No legal status events found.",
+        original_status=None,
     )
     
     # First, check the patent_status field directly (this is the current status)
     if patent_status:
+        analysis.original_status = patent_status
         if "REJECTED" in patent_status or "REFUSED" in patent_status:
             analysis.is_refused = True
             analysis.severity = StatusSeverity.HIGH
@@ -251,11 +267,36 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
             analysis.refusal_reason = f"Patent Status: {patent_status}"
             analysis.interpretation = f"⚠️ Patent marked as {patent_status}"
             logger.info(f"Patent discontinued based on status: {patent_status}")
-        elif "LAPSED" in patent_status or "EXPIRED" in patent_status:
+        elif "EXPIRED" in patent_status:
+            analysis.is_expired = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.refusal_reason = f"Patent Status: {patent_status}"
+            analysis.interpretation = f"Patent marked as {patent_status}"
+            logger.info(f"Patent expired based on status: {patent_status}")
+        elif "LAPSED" in patent_status:
             analysis.is_lapsed = True
             analysis.severity = StatusSeverity.LOW
             analysis.refusal_reason = f"Patent Status: {patent_status}"
             analysis.interpretation = f"Patent marked as {patent_status}"
+            logger.info(f"Patent lapsed based on status: {patent_status}")
+        elif "INACTIVE" in patent_status:
+            analysis.is_inactive = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.refusal_reason = f"Patent Status: {patent_status}"
+            analysis.interpretation = f"Patent marked as {patent_status}"
+            logger.info(f"Patent inactive based on status: {patent_status}")
+        elif "ACTIVE" in patent_status:
+            analysis.is_active = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.refusal_reason = f"Patent Status: {patent_status}"
+            analysis.interpretation = f"Patent marked as {patent_status}"
+            logger.info(f"Patent active based on status: {patent_status}")
+        elif "PENDING" in patent_status:
+            analysis.is_pending = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.refusal_reason = f"Patent Status: {patent_status}"
+            analysis.interpretation = f"Patent marked as {patent_status}"
+            logger.info(f"Patent pending based on status: {patent_status}")
     
     if not events:
         logger.warning(f"No legal events found for patent in {jurisdiction}")
