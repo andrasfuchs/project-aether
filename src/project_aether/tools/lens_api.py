@@ -177,6 +177,7 @@ class LensConnector:
         positive_keywords: Optional[List[str]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
+        language: str = "EN",
     ) -> Dict:
         """
         Construct a flexible keyword-based patent search query.
@@ -188,6 +189,10 @@ class LensConnector:
             jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"]), or None for no jurisdiction filter
             start_date: Start date in ISO format (YYYY-MM-DD), or None for infinite lookback
             end_date: End date in ISO format. If None, uses today.
+            positive_keywords: Keywords to include (OR logic)
+            negative_keywords: Keywords to exclude (AND exclusion logic)
+            patent_status_filter: Optional patent status filter
+            language: Language code for the search query (e.g., "EN", "ZH", "AR"). Defaults to "EN".
             positive_keywords: Keywords to search for (OR logic - any match returns result)
             negative_keywords: Keywords to exclude (AND logic - exclude if ANY match)
             patent_status_filter: Optional list of patent statuses to filter by (e.g., ["DISCONTINUED", "WITHDRAWN"])
@@ -240,27 +245,29 @@ class LensConnector:
             })
         
         # Build positive keyword clauses (OR logic - match ANY)
-        # Search in both abstract and title for better coverage
+        # Search in abstract, title, and claims for better coverage
         should_clauses = []
         for term in positive_keywords:
             should_clauses.append({
                 "bool": {
                     "should": [
                         {"match_phrase": {"abstract": term}},
-                        {"match_phrase": {"biblio.invention_title.text": term}}
+                        {"match_phrase": {"biblio.invention_title.text": term}},
+                        {"match_phrase": {"claim": term}}
                     ]
                 }
             })
 
         # Build negative keyword clauses (AND logic - exclude if ANY match)
-        # Check both abstract and title
+        # Check abstract, title, and claims
         must_not_clauses = []
         for term in negative_keywords:
             must_not_clauses.append({
                 "bool": {
                     "should": [
                         {"match_phrase": {"abstract": term}},
-                        {"match_phrase": {"biblio.invention_title.text": term}}
+                        {"match_phrase": {"biblio.invention_title.text": term}},
+                        {"match_phrase": {"claim": term}}
                     ]
                 }
             })
@@ -275,6 +282,7 @@ class LensConnector:
                     "minimum_should_match": 1 if should_clauses else 0,
                 }
             },
+            "language": language,
             "size": 100,  # Retrieve more candidates for filtering
             "include": [
                 "lens_id",
@@ -302,26 +310,27 @@ class LensConnector:
         positive_keywords: Optional[List[str]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
-        language: str = "English",
+        language: str = "EN",
     ) -> Dict:
         """
-        Convenience method to search a single jurisdiction with detailed logging.
+        Convenience method to search with specified language and no jurisdiction filter.
         
         Args:
-            jurisdiction: Single jurisdiction code (e.g., "RU"), or None for no filter
+            jurisdiction: Single jurisdiction code (e.g., "RU"), or None for no filter (used for logging)
             start_date: Start date in ISO format, or None for infinite lookback
             end_date: End date in ISO format
             positive_keywords: Keywords to search for (OR logic)
             negative_keywords: Keywords to exclude (AND logic)
             patent_status_filter: Optional patent status filter
-            language: Language name for logging purposes
+            language: Language code for the search query (e.g., "EN", "ZH", "AR")
             
         Returns:
             Search results from Lens.org with metadata about filtering
         """
         jurisdictions = [jurisdiction] if jurisdiction else None
         
-        # Build the query
+        # Build the query with language parameter
+
         query = self.build_keyword_search_query(
             jurisdictions,
             start_date,
@@ -329,6 +338,7 @@ class LensConnector:
             positive_keywords=positive_keywords,
             negative_keywords=negative_keywords,
             patent_status_filter=patent_status_filter,
+            language=language,
         )
         
         # Execute the search

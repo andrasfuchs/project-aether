@@ -11,12 +11,25 @@
         "spark plug"
       ],
       "created_at": "2026-01-30T10:30:23.661035"
+    },
+    "0beed47fc0cf": {
+      "id": "0beed47fc0cf",
+      "label": "thermonuclear",
+      "include": [
+        "thermonuclear"
+      ],
+      "exclude": [],
+      "created_at": "2026-02-05T09:29:10.092690"
     }
   },
   "history": [
     {
+      "id": "0beed47fc0cf",
+      "last_used": "2026-02-05T09:37:45.632059"
+    },
+    {
       "id": "f5b842bdde45",
-      "last_used": "2026-01-30T11:58:17.824674"
+      "last_used": "2026-02-05T09:24:10.262801"
     }
   ],
   "translations": {
@@ -42,8 +55,30 @@
         ],
         "source": "llm",
         "updated_at": "2026-01-30T11:15:55.669327"
+      },
+      "Chinese": {
+        "language": "Chinese",
+        "include": [
+          "惰性气体热核燃料"
+        ],
+        "exclude": [
+          "火花塞"
+        ],
+        "source": "llm",
+        "updated_at": "2026-02-05T09:23:42.230521"
+      }
+    },
+    "0beed47fc0cf": {
+      "Chinese": {
+        "language": "Chinese",
+        "include": [
+          "热核"
+        ],
+        "exclude": [],
+        "source": "llm",
+        "updated_at": "2026-02-05T09:29:35.473130"
       }
     }
   },
-  "updated_at": "2026-01-30T11:58:17.825200"
+  "updated_at": "2026-02-05T09:37:45.633064"
 }

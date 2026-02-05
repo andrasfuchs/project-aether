@@ -87,6 +87,21 @@ JURISDICTION_LANGUAGE_MAP = {
     "HU": "Hungarian",
 }
 
+# Language mapping: Display Name -> Lens API Code
+LANGUAGE_MAP = {
+    "English": "EN",
+    "Chinese": "ZH",
+    "Japanese": "JA",
+    "Korean": "KO",
+    "French": "FR", 
+    "Russian": "RU",
+    "Spanish": "ES",
+    "Portuguese": "PT",
+    "Dutch": "DE",
+    "Arabic": "AR",
+    "Other": "Other",
+}
+
 # Page configuration
 st.set_page_config(
     page_title="Project Aether",
@@ -410,90 +425,30 @@ def main():
         from project_aether.core.config import get_config
         config = get_config()
         
-        st.write("#### Temporal Scope")
+        # Use infinite date window (no date filtering)
+        end_date = datetime.now()
+        start_date = None
+               
+        st.write("#### Search Language")
         
-        # Date range selection
-        end_date = st.date_input(
-            "Target End Date",
-            value=datetime.now(),
-            help="Analysis will run up to this date"
+        # Initialize language selection in session state
+        if 'selected_language' not in st.session_state:
+            st.session_state.selected_language = "English"
+        
+        language_options = list(LANGUAGE_MAP.keys())
+        selected_language_name = st.selectbox(
+            "Query Language",
+            options=language_options,
+            index=language_options.index(st.session_state.selected_language),
+            help="Language for the search query. The API will use this language for multi-lingual search."
         )
         
-        years_back = st.slider(
-            "Lookback Window (Years)",
-            min_value=0,
-            max_value=50,
-            value=0,
-            help="Historical depth of the search. Set to 0 for infinite (no date filter)"
-        )
+        # Store selected language
+        st.session_state.selected_language = selected_language_name
+        selected_language_code = LANGUAGE_MAP[selected_language_name]
         
-        if years_back == 0:
-            start_date = None
-            st.caption(f"Window: `Infinite (No Date Filter)` to `{end_date}`")
-        else:
-            start_date = end_date - timedelta(days=years_back * 365)
-            st.caption(f"Window: `{start_date}` to `{end_date}`")
-        
-        st.markdown("---")
-        
-        st.write("#### Geographic Scope")
-        
-        # List of jurisdiction display names
-        jurisdiction_display_names = [
-            "All",
-            "European Patents",
-            "China",
-            "Japan",
-            "United States",
-            "Germany",
-            "Republic of Korea",
-            "United Kingdom",
-            "France",
-            "Canada",
-            "Russia",
-            "Poland",
-            "Romania",
-            "Czech Republic",
-            "Netherlands",
-            "Spain",
-            "Italy",
-            "Sweden",
-            "Norway",
-            "Finland",
-            "Hungary"
-        ]
-        
-        # Initialize previous selection in session state
-        if 'prev_jurisdiction_selection' not in st.session_state:
-            st.session_state.prev_jurisdiction_selection = ["All"]
-        
-        selected_jurisdiction_names = st.multiselect(
-            "Target Jurisdictions",
-            options=jurisdiction_display_names,
-            default=st.session_state.prev_jurisdiction_selection,
-            help="Multinational patent offices to surveil. Select 'All' for no jurisdiction filter."
-        )
-        
-        # Handle "All" selection logic
-        prev_selection = st.session_state.prev_jurisdiction_selection
-        
-        # If "All" was just selected (wasn't in previous but is now)
-        if "All" in selected_jurisdiction_names and "All" not in prev_selection:
-            selected_jurisdiction_names = ["All"]
-        # If other jurisdictions were selected while "All" was already selected
-        elif "All" in prev_selection and len(selected_jurisdiction_names) > 1 and "All" in selected_jurisdiction_names:
-            # Remove "All" from selection
-            selected_jurisdiction_names = [name for name in selected_jurisdiction_names if name != "All"]
-        
-        # Update session state
-        st.session_state.prev_jurisdiction_selection = selected_jurisdiction_names
-        
-        # Convert display names to ISO codes or None for "All"
-        if "All" in selected_jurisdiction_names:
-            # "All" means no jurisdiction filter - pass None or empty list
-            selected_jurisdictions = None  # Will be handled to skip jurisdiction filtering
-        else:
-            selected_jurisdictions = [JURISDICTION_MAP[name] for name in selected_jurisdiction_names]
+        # Jurisdiction is set to ALL by default (no filter)
+        selected_jurisdictions = None
 
         st.markdown("---")
         st.write("#### Search Keywords")
@@ -533,11 +488,12 @@ def main():
                 st.session_state['keyword_cache'] = cache
                 st.success("Keyword set saved to history")
 
-        target_languages = get_target_languages(selected_jurisdictions)
+        # Since jurisdiction is always ALL now, show translations for selected language if not English
+        target_languages = [selected_language_name] if selected_language_name != "English" else []
 
         with st.expander("Translations", expanded=bool(target_languages)):
             if not target_languages:
-                st.caption("No translations needed for the current jurisdiction selection.")
+                st.caption("No translations needed for English language selection.")
             else:
                 if not config.google_api_key:
                     st.warning("LLM translation requires GOOGLE_API_KEY. Using cached or default translations only.")
@@ -657,13 +613,11 @@ def main():
     # --- DASHBOARD TAB ---
     with tab_dashboard:
         if run_mission:
-            # Check if jurisdictions are selected (None is valid for "All", but empty selection is not)
-            if not selected_jurisdiction_names:
-                st.error("Analysis aborted: no jurisdictions selected")
-            elif not config.is_lens_configured:
+            # Check API configuration
+            if not config.is_lens_configured:
                 st.error("Analysis aborted: Lens.org API disconnected")
             else:
-                run_patent_search(selected_jurisdictions, start_date, end_date)
+                run_patent_search(selected_language_code, start_date, end_date)
         else:
             dashboard_state = st.session_state.get('dashboard')
             if dashboard_state:
@@ -917,8 +871,8 @@ def render_deep_dive(assessment):
             st.caption("None detected")
 
 
-def run_patent_search(jurisdictions, start_date, end_date):
-    """Execute the patent search."""
+def run_patent_search(language_code, start_date, end_date):
+    """Execute the patent search with specified language."""
     
     status_container = st.empty()
     progress_bar = st.progress(0)
@@ -928,6 +882,10 @@ def run_patent_search(jurisdictions, start_date, end_date):
         from project_aether.agents.analyst import AnalystAgent
         from project_aether.utils.artifacts import ArtifactGenerator
         from project_aether.core.config import get_config
+        from project_aether.core.keyword_translation import (
+            keyword_set_id,
+            get_cached_translation,
+        )
         
         status_container.info("Initializing analysis parameters...")
         time.sleep(1)  # UX pacing
@@ -943,71 +901,50 @@ def run_patent_search(jurisdictions, start_date, end_date):
         analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
         
+        # Determine which keywords to use based on language
+        search_language_name = None
+        for display_name, code in LANGUAGE_MAP.items():
+            if code == language_code and display_name != "Other":
+                search_language_name = display_name
+                break
+        
+        # If language is not English, try to get translated keywords
+        final_include_terms = include_terms
+        final_exclude_terms = exclude_terms
+        
+        if search_language_name and search_language_name != "English":
+            set_id = keyword_set_id(include_terms, exclude_terms)
+            cached_translation = get_cached_translation(cache, set_id, search_language_name)
+            if cached_translation:
+                final_include_terms = cached_translation.get("include", include_terms)
+                final_exclude_terms = cached_translation.get("exclude", exclude_terms)
+                status_container.info(f"Using cached translations for {search_language_name}")
+        
         all_results = []
         
-        if jurisdictions is None:
-            total_steps = 3  # init + search + analysis + generation
-            current_step = 1
-            progress_bar.progress(33)
-            
-            status_container.markdown("Searching all jurisdictions (no filter)...")
-            
-            try:
-                resolved_include, resolved_exclude, language, _ = resolve_keywords_for_jurisdiction(
-                    include_terms=include_terms,
-                    exclude_terms=exclude_terms,
-                    jurisdiction_code=None,
-                    cache=cache,
-                    config=config,
+        total_steps = 3  # init + search + analysis + generation
+        current_step = 1
+        progress_bar.progress(33)
+        
+        status_container.markdown(f"Searching with language code {language_code}...")
+        
+        try:
+            # No jurisdiction filtering - search all with specified language
+            result = asyncio.run(
+                connector.search_by_jurisdiction(
+                    jurisdiction=None,
+                    start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                    positive_keywords=final_include_terms,
+                    negative_keywords=final_exclude_terms,
+                    language=language_code,
                 )
-                result = asyncio.run(
-                    connector.search_by_jurisdiction(
-                        jurisdiction=None,
-                        start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
-                        end_date=end_date.strftime("%Y-%m-%d"),
-                        positive_keywords=resolved_include,
-                        negative_keywords=resolved_exclude,
-                        language="English",
-                    )
-                )
-                patents = result.get("data", [])
-                all_results.extend(patents)
-            except Exception as e:
-                logger.error(f"Search failed for all jurisdictions: {e}")
-                st.error(f"Search failed: {e}")
-        else:
-            total_steps = len(jurisdictions) + 2  # +2 for analysis and generation
-            current_step = 0
-            
-            for juris in jurisdictions:
-                current_step += 1
-                progress = int((current_step / total_steps) * 100)
-                progress_bar.progress(progress)
-                
-                resolved_include, resolved_exclude, language, _ = resolve_keywords_for_jurisdiction(
-                    include_terms=include_terms,
-                    exclude_terms=exclude_terms,
-                    jurisdiction_code=juris,
-                    cache=cache,
-                    config=config,
-                )
-                status_container.markdown(f"Searching jurisdiction {juris} ({language})...")
-                
-                try:
-                    result = asyncio.run(
-                        connector.search_by_jurisdiction(
-                            jurisdiction=juris,
-                            start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
-                            end_date=end_date.strftime("%Y-%m-%d"),
-                            positive_keywords=resolved_include,
-                            negative_keywords=resolved_exclude,
-                            language=language,
-                        )
-                    )
-                    patents = result.get("data", [])
-                    all_results.extend(patents)
-                except Exception as e:
-                    logger.error(f"Search failed for {juris}: {e}")
+            )
+            patents = result.get("data", [])
+            all_results.extend(patents)
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            st.error(f"Search failed: {e}")
         
         st.session_state['all_raw_results'] = all_results
 
@@ -1023,7 +960,7 @@ def run_patent_search(jurisdictions, start_date, end_date):
         
         dashboard = generator.create_dashboard_artifact(
             assessments=[a.to_dict() for a in assessments],
-            jurisdictions=jurisdictions if jurisdictions else ["ALL"]
+            jurisdictions=["ALL"]
         )
         
         st.session_state['assessments'] = assessments
