@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from types import SimpleNamespace
 
 import streamlit as st
 
@@ -22,16 +23,54 @@ from project_aether.utils.artifacts import ArtifactGenerator
 logger = logging.getLogger("ProjectAether")
 
 
+def render_dashboard(dashboard_container, dashboard, status_text, progress_percent):
+    """Render the dashboard summary cards."""
+    with dashboard_container.container():
+        st.markdown(f"### Search Status: {status_text} (Ref: {dashboard.mission_id})")
+
+        st.progress(progress_percent)
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            render_metric_card(
+                "Total Results", str(dashboard.total_patents_searched), "Patents Scanned", "#94A3B8"
+            )
+        with col2:
+            render_metric_card(
+                "High Value", str(dashboard.high_priority_count), "Critical Findings", "#EF4444"
+            )
+        with col3:
+            render_metric_card(
+                "Medium Value", str(dashboard.medium_priority_count), "Potential Interest", "#F59E0B"
+            )
+        with col4:
+            render_metric_card("Low Value", str(dashboard.anomalous_count), "Probable Noise", "#00B4D8")
+
+
+def _build_dashboard_snapshot(total, high, medium, low, mission_id="IN-PROGRESS"):
+    return SimpleNamespace(
+        total_patents_searched=total,
+        high_priority_count=high,
+        medium_priority_count=medium,
+        anomalous_count=low,
+        mission_id=mission_id,
+    )
+
+
 def run_patent_search(language_code, start_date, end_date, language_map):
     """Execute the patent search with specified language, with live dashboard updates."""
 
-    # Create containers for status message and live dashboard
-    status_container = st.empty()
+    # Create container for live dashboard
     dashboard_container = st.empty()
-    progress_bar = st.progress(0)
 
     try:
-        status_container.info("Initializing analysis parameters...")
+        render_dashboard(
+            dashboard_container,
+            _build_dashboard_snapshot(0, 0, 0, 0),
+            "Initializing",
+            5,
+        )
         time.sleep(1)  # UX pacing
 
         config = get_config()
@@ -62,12 +101,19 @@ def run_patent_search(language_code, start_date, end_date, language_map):
             if cached_translation:
                 final_include_terms = cached_translation.get("include", include_terms)
                 final_exclude_terms = cached_translation.get("exclude", exclude_terms)
-                status_container.info(f"Using cached translations for {search_language_name}")
+                render_dashboard(
+                    dashboard_container,
+                    _build_dashboard_snapshot(0, 0, 0, 0),
+                    f"Using cached translations for {search_language_name}",
+                    10,
+                )
 
         all_results = []
-        progress_bar.progress(33)
-        status_container.markdown(
-            f"Searching Lens.org with language: **{search_language_name or language_code}**..."
+        render_dashboard(
+            dashboard_container,
+            _build_dashboard_snapshot(0, 0, 0, 0),
+            f"Searching in {search_language_name or language_code}",
+            33,
         )
 
         try:
@@ -92,11 +138,15 @@ def run_patent_search(language_code, start_date, end_date, language_map):
         st.session_state["all_raw_results"] = all_results
 
         if not all_results:
-            status_container.warning("No patents found matching your criteria.")
+            st.warning("No patents found matching your criteria.")
             return
 
-        progress_bar.progress(50)
-        status_container.markdown(f"Analyzing {len(all_results)} candidates for key signals...")
+        render_dashboard(
+            dashboard_container,
+            _build_dashboard_snapshot(0, 0, 0, 0),
+            f"In Progress (0/{len(all_results)})",
+            50,
+        )
 
         # Analyze patents incrementally and update dashboard in real-time
         assessments = []
@@ -119,25 +169,14 @@ def run_patent_search(language_code, start_date, end_date, language_map):
 
                 # Update dashboard every patent (or every N patents for performance)
                 if (i + 1) % max(1, len(all_results) // 10) == 0 or (i + 1) == len(all_results):
-                    # Update status
+                    # Update status using dashboard renderer
                     percent_done = int(50 + ((i + 1) / len(all_results)) * 45)
-                    progress_bar.progress(percent_done)
-                    status_container.markdown(f"Analyzing patent {i + 1} of {len(all_results)}...")
-
-                    # Render live dashboard
-                    with dashboard_container.container():
-                        st.markdown(f"### Search Status: In Progress ({i + 1}/{len(all_results)})")
-
-                        col1, col2, col3, col4 = st.columns(4)
-
-                        with col1:
-                            render_metric_card("Total Results", str(i + 1), "Patents Analyzed", "#94A3B8")
-                        with col2:
-                            render_metric_card("High Value", str(high_count), "Critical Findings", "#EF4444")
-                        with col3:
-                            render_metric_card("Medium Value", str(medium_count), "Potential Interest", "#F59E0B")
-                        with col4:
-                            render_metric_card("Low Value", str(low_count), "Probable Noise", "#00B4D8")
+                    render_dashboard(
+                        dashboard_container,
+                        _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
+                        f"In Progress ({i + 1}/{len(all_results)})",
+                        percent_done,
+                    )
 
                     if assessment.intelligence_value == "HIGH":
                         logger.info(
@@ -148,8 +187,12 @@ def run_patent_search(language_code, start_date, end_date, language_map):
             except Exception as exc:
                 logger.error(f"Failed to analyze patent: {exc}")
 
-        progress_bar.progress(95)
-        status_container.markdown("Compiling final dashboard...")
+        render_dashboard(
+            dashboard_container,
+            _build_dashboard_snapshot(len(all_results), high_count, medium_count, low_count),
+            "Finalizing",
+            95,
+        )
 
         # Create final dashboard artifact
         dashboard = generator.create_dashboard_artifact(
@@ -158,35 +201,11 @@ def run_patent_search(language_code, start_date, end_date, language_map):
         )
 
         st.session_state["assessments"] = assessments
-        st.session_state["dashboard"] = dashboard
-
-        progress_bar.progress(100)
+        st.session_state["dashboard"] = dashboard        
 
         # Render final dashboard
-        with dashboard_container.container():
-            st.markdown(f"### Search Status: Completed (Ref: {dashboard.mission_id})")
+        render_dashboard(dashboard_container, dashboard, "Completed", 100)
 
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                render_metric_card(
-                    "Total Results", str(dashboard.total_patents_searched), "Patents Scanned", "#94A3B8"
-                )
-            with col2:
-                render_metric_card(
-                    "High Value", str(dashboard.high_priority_count), "Critical Findings", "#EF4444"
-                )
-            with col3:
-                render_metric_card(
-                    "Medium Value", str(dashboard.medium_priority_count), "Potential Interest", "#F59E0B"
-                )
-            with col4:
-                render_metric_card("Low Value", str(dashboard.anomalous_count), "Probable Noise", "#00B4D8")
-
-        status_container.success("Analysis complete. Results available in Search Results tab.")
-        time.sleep(2)
-        status_container.empty()
-        progress_bar.empty()
         st.rerun()
 
     except ImportError as exc:
