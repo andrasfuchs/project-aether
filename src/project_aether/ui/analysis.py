@@ -1,11 +1,11 @@
 import streamlit as st
 import os
-from project_aether.core.keyword_translation import (
-    translate_text_with_llm,
-    load_abstract_cache,
-    save_abstract_cache,
-    get_cached_abstract_translation,
-    set_cached_abstract_translation,
+from project_aether.core.translation_service import (
+    translate_text,
+    load_translation_cache,
+    save_translation_cache,
+    get_cached_translation,
+    set_cached_translation,
 )
 
 
@@ -113,35 +113,49 @@ def render_deep_dive(assessment):
                                 
                                 if translated_content is None:
                                     # Translation not yet requested/loaded
-                                    english_abstract = available_abstracts.get("English", "")
+                                    # Find the first available abstract as source
+                                    source_language = None
+                                    source_abstract = None
                                     
-                                    if english_abstract:
+                                    # Prefer languages in this order
+                                    for lang in ["English", "French", "German", "Spanish", "Chinese", "Russian"]:
+                                        if lang in available_abstracts:
+                                            source_language = lang
+                                            source_abstract = available_abstracts[lang]
+                                            break
+                                    
+                                    if source_abstract and source_language:
                                         api_key = os.getenv("GOOGLE_API_KEY")
                                         if api_key:
                                             if st.button("Translate to Hungarian", key=f"translate_btn_{assessment.lens_id}"):
-                                                # Load abstract cache from disk
-                                                abstract_cache = load_abstract_cache()
+                                                # Load translation cache from disk
+                                                translation_cache = load_translation_cache()
                                                 
                                                 try:
-                                                    with st.spinner("Translating abstract to Hungarian..."):
-                                                        translated = translate_text_with_llm(
-                                                            english_abstract,
+                                                    with st.spinner(f"Translating from {source_language} to Hungarian..."):
+                                                        translated = translate_text(
+                                                            source_abstract,
+                                                            source_language,
                                                             "Hungarian",
                                                             api_key
                                                         )
                                                     # Cache translation to both session state and disk
                                                     st.session_state[translation_key] = translated
-                                                    set_cached_abstract_translation(
-                                                        abstract_cache, assessment.lens_id, "Hungarian", translated
+                                                    set_cached_translation(
+                                                        translation_cache,
+                                                        assessment.lens_id,
+                                                        source_language,
+                                                        "Hungarian",
+                                                        translated
                                                     )
-                                                    save_abstract_cache(abstract_cache)
+                                                    save_translation_cache(translation_cache)
                                                     st.rerun()
                                                 except Exception as e:
                                                     st.error(f"Translation failed: {str(e)}")
                                         else:
                                             st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
                                     else:
-                                        st.info("No English abstract available for translation.")
+                                        st.info("No abstract available for translation.")
                                 elif translated_content == "":
                                     # Translation was attempted but failed
                                     st.info("Translation not available.")
