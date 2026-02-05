@@ -149,7 +149,7 @@ st.markdown("""
 
     /* Custom Header Styles */
     .header-container {
-        padding: 2rem 0 1rem 0;
+        padding: 0 0 1rem 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         margin-bottom: 2rem;
     }
@@ -410,7 +410,7 @@ def main():
     st.markdown("""
     <div class="header-container">
         <div class="main-title">Project Aether</div>
-        <div class="subtitle">Patent intelligence and analysis</div>
+        <div class="subtitle">Rejected today, revolutionary tomorrow</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -830,52 +830,35 @@ def render_metric_card(label, value, subtext="", color="#00B4D8"):
 def show_placeholder_dashboard():
     """Display modern placeholder dashboard."""
     
-    st.markdown("### Status: Idle")
+    st.markdown("### Search Status: Idle")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        render_metric_card("Total Targets", "—", "Awaiting search", "#94A3B8")
+        render_metric_card("Total Results", "—", "Awaiting search", "#94A3B8")
     with col2:
         render_metric_card("High Value", "—", "Substantive Rejections", "#EF4444")
     with col3:
-        render_metric_card("Medium Value", "—", "Withdrawn / Anomalous", "#F59E0B")
+        render_metric_card("Medium Value", "—", "Potential Interest", "#F59E0B")
     with col4:
-        render_metric_card("Signal Anomalies", "—", "Plasma indicators", "#00B4D8")
-    
-    st.markdown("---")
-    
-    # Empty State Hero
-    st.markdown("""
-    <div style="text-align: center; padding: 4rem 2rem; background: rgba(255,255,255,0.02); border-radius: 16px;">
-        <h2 style="color: #94A3B8;">Ready to start analysis</h2>
-        <p style="color: #64748b; max-width: 600px; margin: 0 auto 2rem auto;">
-            Ready to query multiple jurisdictions for rejected patent applications
-            that match the selected criteria.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+        render_metric_card("Low Value", "—", "Probable Noise", "#00B4D8")
 
+    
 def render_dashboard_metrics(dashboard):
     """Render the dashboard with actual data."""
-    st.markdown(f"### Analysis Status: Completed (Ref: {dashboard.mission_id})")
+    st.markdown(f"### Search Status: Completed (Ref: {dashboard.mission_id})")
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        render_metric_card("Total Targets", dashboard.total_patents_searched, "Patents Scanned", "#94A3B8")
+        render_metric_card("Total Results", dashboard.total_patents_searched, "Patents Scanned", "#94A3B8")
     with col2:
         render_metric_card("High Value", dashboard.high_priority_count, "Critical Findings", "#EF4444")
     with col3:
         render_metric_card("Medium Value", dashboard.medium_priority_count, "Potential Interest", "#F59E0B")
     with col4:
-        render_metric_card("Signal Anomalies", dashboard.anomalous_count, "Plasma indicators", "#00B4D8")
+        render_metric_card("Low Value", dashboard.anomalous_count, "Probable Noise", "#00B4D8")
         
-    st.markdown("### Top Jurisdictions")
-    # Simple bar chart using st.bar_chart if we had the breakdown, for now just text
-    if dashboard.top_jurisdiction:
-        st.info(f"Most activity detected in: **{dashboard.top_jurisdiction}**")
-
 def render_deep_dive(assessment):
     """Render a detailed view of a patent assessment."""
     
