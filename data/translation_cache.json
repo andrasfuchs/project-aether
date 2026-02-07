@@ -14,7 +14,15 @@
       "target_language": "Hungarian",
       "text": "A jelen találmány egy 3D modell ábrázolási módszert, keresési módszert és keresési rendszert biztosít, amely ábrázolási módszer magában foglalja a felhőalapú számítástechnika és a MapReduce klaszter számítási kapacitásának alkalmazását, a 3D modell voxeljei közötti hőátadás alapján minden egyes belső voxel hőmag-sajátértékének gyors kiszámításához. Az ábrázolási módszer továbbá magában foglalja azon belső voxelek kiválasztását váz-voxelként, amelyek hőmag-sajátértéke kisebb egy előre meghatározott küszöbértéknél; a váz-voxelek, a váz-voxelek hőmag-sajátértékei, valamint a váz-voxelek közötti hőátadás alkotják az adott 3D modell hőmag-váz-jellemző leíróját. A jelen találmány alkalmas nem-merev 3D modellek keresésére, és képes a 3D modellek jellemzőinek hatékony kinyerésére.",
       "translated_at": "2026-02-05T14:09:21.630357"
+    },
+    "172-345-310-800-400||Russian||English": {
+      "source_id": "172-345-310-800-400",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "The utility model relates to the design of a vacuum chamber, which is an element of a thermonuclear reactor or a demonstration thermonuclear neutron source (DEMO-TNS). The vacuum chamber of the thermonuclear reactor comprises a housing formed by inner and outer shells with metal structures located between them, forming a steel-water shield. Wherein the inner shell is double-walled and consists of an inner structural shell and an inner casing connected by mountings. The mountings of the inner casing to the inner structural shell are configured to allow the installation of a blanket module on these mountings rather than on the inner casing. The technical result is maintaining the required temperature of all elements of the vacuum chamber of the thermonuclear reactor both in the normal operating mode and in emergency situations associated with a cooling system failure. 2 fig., 4 tabl., 1 ex.",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T10:03:33.879876"
     }
   },
-  "updated_at": "2026-02-05T14:09:21.631364"
+  "updated_at": "2026-02-07T10:03:33.881382"
 }

@@ -94,6 +94,11 @@ def render_deep_dive(assessment):
                         tab_labels.append(lang)
                         tab_contents.append(available_abstracts[lang])
                 
+                # Add English (auto-translated) tab if not already present in available abstracts
+                if "English" not in available_abstracts:
+                    tab_labels.append("English (auto-translated)")
+                    tab_contents.append(None)  # Placeholder for auto-translated content
+                
                 # Add Hungarian (auto-translated) tab if not already present in available abstracts
                 if "Hungarian" not in available_abstracts:
                     tab_labels.append("Hungarian (auto-translated)")
@@ -105,10 +110,24 @@ def render_deep_dive(assessment):
                     
                     for tab_index, (tab, content) in enumerate(zip(tabs, tab_contents)):
                         with tab:
-                            # Handle auto-translated Hungarian tab
+                            # Determine which language this tab is for
+                            tab_label = tab_labels[tab_index]
+                            
+                            # Handle auto-translated tabs (English and Hungarian)
                             if content is None:
-                                # This is the auto-translated Hungarian tab
-                                translation_key = f"hungarian_translation_{assessment.lens_id}"
+                                # Determine target language based on tab label
+                                if "English" in tab_label:
+                                    target_language = "English"
+                                    session_key_prefix = "english_translation"
+                                elif "Hungarian" in tab_label:
+                                    target_language = "Hungarian"
+                                    session_key_prefix = "hungarian_translation"
+                                else:
+                                    # Should not happen
+                                    st.info("Auto-translation not available for this language.")
+                                    continue
+                                
+                                translation_key = f"{session_key_prefix}_{assessment.lens_id}"
                                 translated_content = st.session_state.get(translation_key, None)
                                 
                                 if translated_content is None:
@@ -117,9 +136,10 @@ def render_deep_dive(assessment):
                                     source_language = None
                                     source_abstract = None
                                     
-                                    # Prefer languages in this order
-                                    for lang in ["English", "French", "German", "Spanish", "Chinese", "Russian"]:
-                                        if lang in available_abstracts:
+                                    # Prefer languages in this order (avoid translating from target language)
+                                    prefer_order = ["English", "French", "German", "Spanish", "Chinese", "Russian"]
+                                    for lang in prefer_order:
+                                        if lang in available_abstracts and lang != target_language:
                                             source_language = lang
                                             source_abstract = available_abstracts[lang]
                                             break
@@ -127,16 +147,16 @@ def render_deep_dive(assessment):
                                     if source_abstract and source_language:
                                         api_key = os.getenv("GOOGLE_API_KEY")
                                         if api_key:
-                                            if st.button("Translate to Hungarian", key=f"translate_btn_{assessment.lens_id}"):
+                                            if st.button(f"Translate to {target_language}", key=f"translate_btn_{assessment.lens_id}_{target_language}"):
                                                 # Load translation cache from disk
                                                 translation_cache = load_translation_cache()
                                                 
                                                 try:
-                                                    with st.spinner(f"Translating from {source_language} to Hungarian..."):
+                                                    with st.spinner(f"Translating from {source_language} to {target_language}..."):
                                                         translated = translate_text(
                                                             source_abstract,
                                                             source_language,
-                                                            "Hungarian",
+                                                            target_language,
                                                             api_key
                                                         )
                                                     # Cache translation to both session state and disk
@@ -145,7 +165,7 @@ def render_deep_dive(assessment):
                                                         translation_cache,
                                                         assessment.lens_id,
                                                         source_language,
-                                                        "Hungarian",
+                                                        target_language,
                                                         translated
                                                     )
                                                     save_translation_cache(translation_cache)
@@ -155,7 +175,7 @@ def render_deep_dive(assessment):
                                         else:
                                             st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
                                     else:
-                                        st.info("No abstract available for translation.")
+                                        st.info(f"No abstract available for translation to {target_language}.")
                                 elif translated_content == "":
                                     # Translation was attempted but failed
                                     st.info("Translation not available.")
