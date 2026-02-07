@@ -137,7 +137,7 @@ def main():
     """, unsafe_allow_html=True)
     
     # --- SIDEBAR CONFIGURATION ---
-    config, selected_language_code, start_date, end_date, run_mission = render_sidebar(LANGUAGE_MAP)
+    config, selected_language_codes, selected_language_names, start_date, end_date, run_mission = render_sidebar(LANGUAGE_MAP)
 
     # --- MAIN CONTENT TABS ---
     tab_dashboard, tab_results, tab_analysis, tab_settings = st.tabs([
@@ -154,7 +154,7 @@ def main():
             if not config.is_lens_configured:
                 st.error("Analysis aborted: Lens.org API disconnected")
             else:
-                run_patent_search(selected_language_code, start_date, end_date, LANGUAGE_MAP)
+                run_patent_search(selected_language_codes, selected_language_names, start_date, end_date, LANGUAGE_MAP)
         else:
             dashboard_state = st.session_state.get('dashboard')
             if dashboard_state:

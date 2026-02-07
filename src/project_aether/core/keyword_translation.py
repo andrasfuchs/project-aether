@@ -19,7 +19,7 @@ from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-3-pro-preview"
 
 
 def _utc_now() -> str:
@@ -144,6 +144,7 @@ def set_cached_translation(
     include_terms: List[str],
     exclude_terms: List[str],
     source: str,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     translations = cache.setdefault("translations", {})
     set_translations = translations.setdefault(set_id, {})
@@ -154,6 +155,8 @@ def set_cached_translation(
         "source": source,
         "updated_at": _utc_now(),
     }
+    if model:
+        entry["model"] = model
     set_translations[language] = entry
     return entry
 
@@ -307,12 +310,13 @@ def set_cached_abstract_translation(
     lens_id: str,
     target_language: str,
     translated_text: str,
+    model: str = DEFAULT_MODEL,
 ) -> None:
     """
     Deprecated: Use translation_service.set_cached_translation() instead.
     Wrapper that maintains old API (assumes source language is English).
     """
-    _set_translation(cache, lens_id, "English", target_language, translated_text)
+    _set_translation(cache, lens_id, "English", target_language, translated_text, model)
 
 
 def translate_text_with_llm(

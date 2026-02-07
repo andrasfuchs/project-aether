@@ -92,8 +92,11 @@ def _build_dashboard_snapshot(total, high, medium, low, mission_id="IN-PROGRESS"
     )
 
 
-def run_patent_search(language_code, start_date, end_date, language_map):
-    """Execute the patent search with specified language, with live dashboard updates."""
+def run_patent_search(language_codes, language_names, start_date, end_date, language_map):
+    """Execute the patent search with specified languages, with live dashboard updates.
+    
+    Performs sequential searches for each language and accumulates all results.
+    """
 
     # Create container for live dashboard
     dashboard_container = st.empty()
@@ -118,67 +121,64 @@ def run_patent_search(language_code, start_date, end_date, language_map):
         analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
 
-        # Determine which keywords to use based on language
-        search_language_name = None
-        for display_name, code in language_map.items():
-            if code == language_code and display_name != "Other":
-                search_language_name = display_name
-                break
-
-        # If language is not English, try to get translated keywords
-        final_include_terms = include_terms
-        final_exclude_terms = exclude_terms
-
-        if search_language_name and search_language_name != "English":
-            set_id = keyword_set_id(include_terms, exclude_terms)
-            cached_translation = get_cached_translation(cache, set_id, search_language_name)
-            if cached_translation:
-                final_include_terms = cached_translation.get("include", include_terms)
-                final_exclude_terms = cached_translation.get("exclude", exclude_terms)
-                render_dashboard(
-                    dashboard_container,
-                    _build_dashboard_snapshot(0, 0, 0, 0),
-                    f"Using cached translations for {search_language_name}",
-                    10,
-                )
-
         all_results = []
-        render_dashboard(
-            dashboard_container,
-            _build_dashboard_snapshot(0, 0, 0, 0),
-            f"Searching in {search_language_name or language_code}",
-            33,
-        )
-
-        try:
-            # No jurisdiction filtering - search all with specified language
-            result = asyncio.run(
-                connector.search_by_jurisdiction(
-                    jurisdiction=None,
-                    start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                    positive_keywords=final_include_terms,
-                    negative_keywords=final_exclude_terms,
-                    language=language_code,
-                )
+        
+        # Perform searches for each selected language
+        for lang_idx, (language_code, language_name) in enumerate(zip(language_codes, language_names)):
+            render_dashboard(
+                dashboard_container,
+                _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                f"Searching in {language_name} ({lang_idx + 1}/{len(language_codes)})",
+                10 + (lang_idx * (25 / len(language_codes))),
             )
-            patents = result.get("data", [])
-            all_results.extend(patents)
-        except Exception as exc:
-            logger.error(f"Search failed: {exc}")
-            st.error(f"Search failed: {exc}")
-            return
+            
+            # Determine which keywords to use based on language
+            final_include_terms = include_terms
+            final_exclude_terms = exclude_terms
+
+            if language_name != "English":
+                set_id = keyword_set_id(include_terms, exclude_terms)
+                cached_translation = get_cached_translation(cache, set_id, language_name)
+                if cached_translation:
+                    final_include_terms = cached_translation.get("include", include_terms)
+                    final_exclude_terms = cached_translation.get("exclude", exclude_terms)
+                    render_dashboard(
+                        dashboard_container,
+                        _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                        f"Using cached translations for {language_name}",
+                        10 + (lang_idx * (25 / len(language_codes))),
+                    )
+
+            try:
+                # No jurisdiction filtering - search all with specified language
+                result = asyncio.run(
+                    connector.search_by_jurisdiction(
+                        jurisdiction=None,
+                        start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
+                        end_date=end_date.strftime("%Y-%m-%d"),
+                        positive_keywords=final_include_terms,
+                        negative_keywords=final_exclude_terms,
+                        language=language_code,
+                    )
+                )
+                patents = result.get("data", [])
+                all_results.extend(patents)
+                logger.info(f"Found {len(patents)} patents for {language_name}")
+            except Exception as exc:
+                logger.error(f"Search failed for {language_name}: {exc}")
+                st.error(f"Search failed for {language_name}: {exc}")
+                continue
 
         st.session_state["all_raw_results"] = all_results
 
         if not all_results:
-            st.warning("No patents found matching your criteria.")
+            st.warning("No patents found matching your criteria across all selected languages.")
             return
 
         render_dashboard(
             dashboard_container,
-            _build_dashboard_snapshot(0, 0, 0, 0),
-            f"In Progress (0/{len(all_results)})",
+            _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+            f"Analyzing {len(all_results)} patents from {len(language_names)} language(s)",
             50,
         )
 
@@ -208,7 +208,7 @@ def run_patent_search(language_code, start_date, end_date, language_map):
                     render_dashboard(
                         dashboard_container,
                         _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
-                        f"In Progress ({i + 1}/{len(all_results)})",
+                        f"Analyzing ({i + 1}/{len(all_results)})",
                         percent_done,
                     )
 

@@ -38,20 +38,26 @@ def render_sidebar(language_map):
         start_date = None
 
         # Initialize language selection in session state
-        if "selected_language" not in st.session_state:
-            st.session_state.selected_language = "English"
+        if "selected_languages" not in st.session_state:
+            st.session_state.selected_languages = ["English"]
 
         language_options = list(language_map.keys())
-        selected_language_name = st.selectbox(
-            "Language",
+        selected_language_names = st.multiselect(
+            "Languages",
             options=language_options,
-            index=language_options.index(st.session_state.selected_language),
-            help="Language for the search query. The API will use this language for multi-lingual search.",
+            default=st.session_state.selected_languages,
+            help="Select one or more languages for the search query. Searches will be performed sequentially and results accumulated.",
         )
 
-        # Store selected language
-        st.session_state.selected_language = selected_language_name
-        selected_language_code = language_map[selected_language_name]
+        # Store selected languages
+        if selected_language_names:
+            st.session_state.selected_languages = selected_language_names
+        else:
+            st.warning("Please select at least one language.")
+            selected_language_names = ["English"]
+            st.session_state.selected_languages = selected_language_names
+        
+        selected_language_codes = [language_map[lang] for lang in selected_language_names]
 
         # Jurisdiction is set to ALL by default (no filter)
         selected_jurisdictions = None
@@ -91,8 +97,8 @@ def render_sidebar(language_map):
                 st.session_state["keyword_cache"] = cache
                 st.success("Keyword set saved to history")
 
-        # Since jurisdiction is always ALL now, show translations for selected language if not English
-        target_languages = [selected_language_name] if selected_language_name != "English" else []
+        # Show translations for selected languages if not only English
+        target_languages = [lang for lang in selected_language_names if lang != "English"]
 
         with st.expander("Translations", expanded=bool(target_languages)):
             if not target_languages:
@@ -203,4 +209,4 @@ def render_sidebar(language_map):
         else:
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
-    return config, selected_language_code, start_date, end_date, run_mission
+    return config, selected_language_codes, selected_language_names, start_date, end_date, run_mission

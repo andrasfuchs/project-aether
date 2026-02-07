@@ -115,6 +115,7 @@ def set_cached_translation(
     source_language: str,
     target_language: str,
     translated_text: str,
+    model: str = DEFAULT_MODEL,
 ) -> None:
     """
     Cache a translation.
@@ -125,6 +126,7 @@ def set_cached_translation(
         source_language: Source language name
         target_language: Target language name
         translated_text: The translated text
+        model: The model used for translation
     """
     translations = cache.setdefault("translations", {})
     cache_key = _make_cache_key(source_id, source_language, target_language)
@@ -133,6 +135,7 @@ def set_cached_translation(
         "source_language": source_language,
         "target_language": target_language,
         "text": translated_text,
+        "model": model,
         "translated_at": _utc_now(),
     }
 
