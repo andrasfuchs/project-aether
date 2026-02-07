@@ -178,7 +178,7 @@ class LensConnector:
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
-        limit: int = 100,
+        limit: Optional[int] = 100,
     ) -> Dict:
         """
         Construct a flexible keyword-based patent search query.
@@ -285,7 +285,6 @@ class LensConnector:
                 }
             },
             "language": language,
-            "size": limit,
             "include": [
                 "lens_id",
                 "jurisdiction",
@@ -301,6 +300,9 @@ class LensConnector:
                 "biblio.classifications_cpc",
             ],
         }
+
+        if limit is not None:
+            query["size"] = limit
         
         return query
     
@@ -313,7 +315,7 @@ class LensConnector:
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
-        limit: int = 100,
+        limit: Optional[int] = 100,
     ) -> Dict:
         """
         Convenience method to search with specified language and no jurisdiction filter.

@@ -31,7 +31,7 @@ from project_aether.utils.artifacts import ArtifactGenerator
 logger = logging.getLogger("ProjectAether")
 
 # Maximum number of patents to retrieve per language for processing
-PATENTS_PER_LANGUAGE = 100
+PATENTS_PER_LANGUAGE = 10
 
 
 def translate_patents_to_english(patents, language_name, api_key, translation_cache, dashboard_container=None, lang_idx=0, num_languages=1):
@@ -188,6 +188,8 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         translation_cache = load_translation_cache()
 
         all_results = []
+        patents_per_language = st.session_state.get("patents_per_language", PATENTS_PER_LANGUAGE)
+        limit = None if patents_per_language >= 1000 else int(patents_per_language)
         
         # Perform searches for each selected language
         for lang_idx, (language_code, language_name) in enumerate(zip(language_codes, language_names)):
@@ -289,7 +291,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         positive_keywords=final_include_terms,
                         negative_keywords=final_exclude_terms,
                         language=language_code,
-                        limit=PATENTS_PER_LANGUAGE,
+                        limit=limit,
                     )
                 )
                 patents = result.get("data", [])

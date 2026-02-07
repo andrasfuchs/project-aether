@@ -181,6 +181,18 @@ def main():
         relevance_threshold = st.slider("Relevance Threshold", 0, 100, 40)
         st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
+        patents_per_language = st.slider(
+            "Patents Per Language",
+            1,
+            1000,
+            10,
+            key="patents_per_language",
+        )
+        if patents_per_language >= 1000:
+            st.caption("No limit will be applied to results per language.")
+        else:
+            st.caption(f"Limits results to {patents_per_language} patents per language.")
+
         st.markdown("---")
         st.markdown("### Analyst Overview")
         st.markdown(
