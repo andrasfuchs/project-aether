@@ -7,13 +7,16 @@ import streamlit as st
 
 from project_aether.agents.analyst import AnalystAgent
 from project_aether.core.config import get_config
-from project_aether.core.keyword_helpers import get_active_english_keywords
+from project_aether.core.keyword_helpers import get_active_english_keywords, translation_context
 from project_aether.core.keyword_translation import (
     keyword_set_id,
     get_cached_translation,
     load_keyword_cache,
     ensure_keyword_set,
     save_keyword_cache,
+    set_cached_translation,
+    default_translation_for_language,
+    translate_keywords_with_llm,
 )
 from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.tools.lens_api import LensConnector
@@ -139,7 +142,9 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
             if language_name != "English":
                 set_id = keyword_set_id(include_terms, exclude_terms)
                 cached_translation = get_cached_translation(cache, set_id, language_name)
+                
                 if cached_translation:
+                    # Use cached translation
                     final_include_terms = cached_translation.get("include", include_terms)
                     final_exclude_terms = cached_translation.get("exclude", exclude_terms)
                     render_dashboard(
@@ -148,6 +153,61 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         f"Using cached translations for {language_name}",
                         10 + (lang_idx * (25 / len(language_codes))),
                     )
+                else:
+                    # Translation not in cache - generate automatically
+                    translation_successful = False
+                    
+                    # Try LLM translation if API key available
+                    if config.google_api_key:
+                        render_dashboard(
+                            dashboard_container,
+                            _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                            f"Translating keywords to {language_name}...",
+                            10 + (lang_idx * (25 / len(language_codes))),
+                        )
+                        try:
+                            final_include_terms, final_exclude_terms = translate_keywords_with_llm(
+                                include_terms=include_terms,
+                                exclude_terms=exclude_terms,
+                                target_language=language_name,
+                                context=translation_context(),
+                                api_key=config.google_api_key,
+                            )
+                            # Save the translation to cache
+                            set_cached_translation(
+                                cache,
+                                set_id=set_id,
+                                language=language_name,
+                                include_terms=final_include_terms,
+                                exclude_terms=final_exclude_terms,
+                                source="llm",
+                            )
+                            translation_successful = True
+                            logger.info(f"Translated keywords to {language_name} using LLM")
+                        except Exception as exc:
+                            logger.warning(f"LLM translation failed for {language_name}: {exc}")
+                    
+                    # Fall back to default translations if LLM failed or unavailable
+                    if not translation_successful:
+                        fallback = default_translation_for_language(language_name)
+                        if fallback:
+                            final_include_terms, final_exclude_terms = fallback
+                            # Save the default translation to cache
+                            set_cached_translation(
+                                cache,
+                                set_id=set_id,
+                                language=language_name,
+                                include_terms=final_include_terms,
+                                exclude_terms=final_exclude_terms,
+                                source="default",
+                            )
+                            logger.info(f"Using default translations for {language_name}")
+                        else:
+                            logger.warning(f"No translation available for {language_name}, using English terms")
+                    
+                    # Save updated cache
+                    save_keyword_cache(cache)
+                    st.session_state["keyword_cache"] = cache
 
             try:
                 # No jurisdiction filtering - search all with specified language
