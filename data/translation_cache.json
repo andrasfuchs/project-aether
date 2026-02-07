@@ -1,92 +1,33 @@
 {
   "version": 1,
   "translations": {
-    "001-223-871-582-865||English||Hungarian": {
-      "source_id": "001-223-871-582-865",
-      "source_language": "English",
-      "target_language": "Hungarian",
-      "text": "Egy termonukleáris fúziós reakció létrehozására szolgáló termonukleáris reakciórendszer egy reakciókamrát és számos részecskenyaláb-kibocsátót tartalmaz. A részecskenyaláb-kibocsátók a reakciókamra egy közös fókuszrégiója körül térben vannak elrendezve és az felé vannak irányítva. A részecskenyaláb-kibocsátók legalább egy termonukleáris üzemanyagtípus, például hidrogén vagy deutérium gerjesztett részecskéit gyorsítják a reakciókamrába a közös fókuszrégióban konvergáló több részecskenyalábként. Amikor a nagy energiájú részecskenyalábok a közös fókuszrégióban konvergálnak, a keletkező plazmagömb kellően sűrű és forró ahhoz, hogy egy termonukleáris fúziós reakció beinduljon, és azt követően a fúziós reakciókat kísérő energiafelszabadulás fenntartsa. Opcionálisan lézernyalábok vagy egyéb bemeneti energiaeszközök is elhelyezhetők a közös fókuszrégió körül és az felé irányítva, hogy nagy energiájú lézernyalábokat irányítsanak a plazmagömbre a fúziós reakció beindításának elősegítése érdekében.",
-      "translated_at": "2026-02-05T14:04:41.955795"
-    },
-    "000-597-723-967-261||Chinese||Hungarian": {
-      "source_id": "000-597-723-967-261",
-      "source_language": "Chinese",
-      "target_language": "Hungarian",
-      "text": "A jelen találmány egy 3D modell ábrázolási módszert, keresési módszert és keresési rendszert biztosít, amely ábrázolási módszer magában foglalja a felhőalapú számítástechnika és a MapReduce klaszter számítási kapacitásának alkalmazását, a 3D modell voxeljei közötti hőátadás alapján minden egyes belső voxel hőmag-sajátértékének gyors kiszámításához. Az ábrázolási módszer továbbá magában foglalja azon belső voxelek kiválasztását váz-voxelként, amelyek hőmag-sajátértéke kisebb egy előre meghatározott küszöbértéknél; a váz-voxelek, a váz-voxelek hőmag-sajátértékei, valamint a váz-voxelek közötti hőátadás alkotják az adott 3D modell hőmag-váz-jellemző leíróját. A jelen találmány alkalmas nem-merev 3D modellek keresésére, és képes a 3D modellek jellemzőinek hatékony kinyerésére.",
-      "translated_at": "2026-02-05T14:09:21.630357"
-    },
-    "172-345-310-800-400||Russian||English": {
-      "source_id": "172-345-310-800-400",
+    "076-549-932-044-608_abstract||Russian||English": {
+      "source_id": "076-549-932-044-608_abstract",
       "source_language": "Russian",
       "target_language": "English",
-      "text": "The utility model relates to the design of a vacuum chamber, which is an element of a thermonuclear reactor or a demonstration thermonuclear neutron source (DEMO-TNS). The vacuum chamber of the thermonuclear reactor comprises a housing formed by inner and outer shells with metal structures located between them, forming a steel-water shield. Wherein the inner shell is double-walled and consists of an inner structural shell and an inner casing connected by mountings. The mountings of the inner casing to the inner structural shell are configured to allow the installation of a blanket module on these mountings rather than on the inner casing. The technical result is maintaining the required temperature of all elements of the vacuum chamber of the thermonuclear reactor both in the normal operating mode and in emergency situations associated with a cooling system failure. 2 fig., 4 tabl., 1 ex.",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T10:03:33.879876"
+      "text": "The invention relates to the field of thermonuclear fusion and can be used in devices for fastening a blanket module to the vacuum vessel of a fusion reactor. A device for fastening a blanket module to a fusion reactor vacuum vessel includes a support comprising flexible rod elements arranged in the form of a bundle between two flanges, in the central portion of the flanges. The support is connected by one flange to the blanket module and is mounted via the other flange in a threaded mounting seat in the vacuum vessel, wherein the support is connected to the seat by a threaded connection via a resilient clamping sleeve. The resilient clamping sleeve is mounted on the support such as to provide contact with the inner surface of the support flange facing the vacuum vessel. The diameter of the support flange facing the vacuum vessel and the diameter of the mounting seat are selected such that a radial compensating gap is formed between the flange and the mounting seat during mounting. The technical result of the present invention is that of providing plan view dual-axis tolerance during the installation of a blanket module on a vacuum vessel under the restricted conditions arising from the position of the mounting seat on the vacuum vessel by reducing the transverse dimension (in plan view) of the device and allowing free radial movement during the mounting of the support flange in the mounting seat in the fusion reactor vacuum vessel (prior to tightening).",
+      "model": "gemini-3-pro-preview",
+      "translated_at": "2026-02-07T13:01:45.655320",
+      "original_text": "The invention relates to the field of thermonuclear fusion and can be used in devices for fastening a blanket module to the vacuum vessel of a fusion reactor. A device for fastening a blanket module to a fusion reactor vacuum vessel includes a support comprising flexible rod elements arranged in the form of a bundle between two flanges, in the central portion of the flanges. The support is connected by one flange to the blanket module and is mounted via the other flange in a threaded mounting seat in the vacuum vessel, wherein the support is connected to the seat by a threaded connection via a resilient clamping sleeve. The resilient clamping sleeve is mounted on the support such as to provide contact with the inner surface of the support flange facing the vacuum vessel. The diameter of the support flange facing the vacuum vessel and the diameter of the mounting seat are selected such that a radial compensating gap is formed between the flange and the mounting seat during mounting. The technical result of the present invention is that of providing plan view dual-axis tolerance during the installation of a blanket module on a vacuum vessel under the restricted conditions arising from the position of the mounting seat on the vacuum vessel by reducing the transverse dimension (in plan view) of the device and allowing free radial movement during the mounting of the support flange in the mounting seat in the fusion reactor vacuum vessel (prior to tightening)."
     },
     "076-549-932-044-608_title||Russian||English": {
       "source_id": "076-549-932-044-608_title",
       "source_language": "Russian",
       "target_language": "English",
-      "text": "DEVICE FOR FASTENING A BLANKET MODULE TO A FUSION REACTOR VACUUM VESSEL",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:08:53.682088"
+      "text": "Device for fastening a blanket module to a fusion reactor vacuum vessel",
+      "model": "gemini-3-pro-preview",
+      "translated_at": "2026-02-07T13:04:29.471169",
+      "original_text": "DEVICE FOR FASTENING A BLANKET MODULE TO A FUSION REACTOR VACUUM VESSEL"
     },
     "100-307-019-106-756_title||Russian||English": {
       "source_id": "100-307-019-106-756_title",
       "source_language": "Russian",
       "target_language": "English",
       "text": "THERMONUCLEAR REACTOR WITH A Z-SHAPED MAGNETIC FIELD",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:09:36.160463"
-    },
-    "100-307-019-106-756_abstract||Russian||English": {
-      "source_id": "100-307-019-106-756_abstract",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "A thermonuclear reactor with a Z-shaped magnetic field is intended for the production of both thermal and electrical energy from light elements undergoing thermonuclear reactions with the release of energy. This reactor can be used as a source of energy in high-capacity power plants, heating plants, as well as on space stations and large vessels.",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:09:47.805182"
-    },
-    "141-580-998-790-25X_title||Russian||English": {
-      "source_id": "141-580-998-790-25X_title",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "ELECTRICAL CONNECTION OF ELEMENTS INSIDE THE CHAMBER OF A NUCLEAR FUSION REACTOR TO THE REACTOR VESSEL",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:10:06.658363"
-    },
-    "141-580-998-790-25X_abstract||Russian||English": {
-      "source_id": "141-580-998-790-25X_abstract",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "The invention relates to the field of thermonuclear fusion and can be used in devices for electrically connecting in-vessel components of a nuclear fusion reactor to the vacuum vessel of the reactor. The present device for electrically connecting in-vessel components of a nuclear fusion reactor to the vacuum vessel of the reactor comprises laminar electrically conductive members, surface portions of which are oriented in different directions, said members being arranged in the form of a stack between flanges. The device is configured as a single unit in which shaped grooves are formed with connecting walls therebetween. The connecting walls constitute the electrically conductive members and broaden in a profiled manner between the differently oriented surface portions at the junction with the flanges provided on the end portions of the single unit. The technical result of the present invention is an increase in the cyclic strength of the electrically conductive members at the junctions between the members and the flanges and between the differently oriented surface portions (at the bends) of the members. The invention also ensures that the electrically conductive members have similar technical characteristics.",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:10:29.145783"
-    },
-    "171-160-379-616-591_title||Russian||English": {
-      "source_id": "171-160-379-616-591_title",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "VACUUM PLASMA REACTOR",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:10:37.397470"
-    },
-    "171-160-379-616-591_abstract||Russian||English": {
-      "source_id": "171-160-379-616-591_abstract",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "The invention relates to the field of thermonuclear fusion and can be used in devices for the electrical connection of components located inside a thermonuclear reactor chamber to the vacuum vessel of the reactor. A device for the electrical connection of components located inside a thermonuclear reactor chamber to the vacuum vessel of the reactor comprises two identical stacks of electrically conductive plates. The electrically conductive plates are configured in the shape of a symmetrical wave having at least one full period. The plates in a stack are nested one inside another and are connected to flanges for attachment to a component located inside the chamber and to the vacuum vessel. The stacks of electrically conductive plates are mounted with mirror symmetry about a line passing through the centers of symmetry of the flanges. The technical result of the present invention is to ensure a practically identical skin effect on all electrically conductive plates of the device. In addition, the technical result is to reduce the force of attraction between the outermost plates and the middle plates (the force of attraction between conductors carrying unidirectional currents) and to provide a uniform current density distribution in each electrically conductive plate.",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:10:59.685750"
-    },
-    "191-545-224-579-987_title||Russian||English": {
-      "source_id": "191-545-224-579-987_title",
-      "source_language": "Russian",
-      "target_language": "English",
-      "text": "THERMONUCLEAR REACTOR",
-      "model": "gemini-3-flash-preview",
-      "translated_at": "2026-02-07T12:11:07.463561"
+      "model": "gemini-3-pro-preview",
+      "translated_at": "2026-02-07T13:05:38.936352",
+      "original_text": "THERMONUCLEAR REACTOR WITH A Z-SHAPED MAGNETIC FIELD"
     }
   },
-  "updated_at": "2026-02-07T12:11:38.129775"
+  "updated_at": "2026-02-07T13:05:38.937352"
 }

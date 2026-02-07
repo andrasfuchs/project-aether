@@ -1,92 +1,24 @@
 {
   "version": 1,
   "keyword_sets": {
-    "f5b842bdde45": {
-      "id": "f5b842bdde45",
-      "label": "v2 inert gas thermonuclear fuel",
-      "include": [
-        "inert gas thermonuclear fuel"
-      ],
-      "exclude": [
-        "spark plug"
-      ],
-      "created_at": "2026-01-30T10:30:23.661035"
-    },
     "0beed47fc0cf": {
       "id": "0beed47fc0cf",
-      "label": "thermonuclear",
+      "label": "Keyword Set 0beed47fc0cf",
       "include": [
         "thermonuclear"
       ],
       "exclude": [],
-      "created_at": "2026-02-05T09:29:10.092690"
+      "created_at": "2026-02-07T12:55:17.258814"
     }
   },
   "history": [
     {
       "id": "0beed47fc0cf",
-      "last_used": "2026-02-07T12:08:39.446543"
-    },
-    {
-      "id": "f5b842bdde45",
-      "last_used": "2026-02-05T09:24:10.262801"
+      "last_used": "2026-02-07T13:03:11.618232"
     }
   ],
   "translations": {
-    "f5b842bdde45": {
-      "Norwegian": {
-        "language": "Norwegian",
-        "include": [
-          "termonuklaert drivstoff av inert gass"
-        ],
-        "exclude": [
-          "tennplugg"
-        ],
-        "source": "llm",
-        "updated_at": "2026-01-30T11:12:01.538758"
-      },
-      "Hungarian": {
-        "language": "Hungarian",
-        "include": [
-          "nemesgáz termonukleáris üzemanyag"
-        ],
-        "exclude": [
-          "gyújtógyertya"
-        ],
-        "source": "llm",
-        "updated_at": "2026-01-30T11:15:55.669327"
-      },
-      "Chinese": {
-        "language": "Chinese",
-        "include": [
-          "惰性气体热核燃料"
-        ],
-        "exclude": [
-          "火花塞"
-        ],
-        "source": "llm",
-        "updated_at": "2026-02-05T09:23:42.230521"
-      }
-    },
     "0beed47fc0cf": {
-      "Chinese": {
-        "language": "Chinese",
-        "include": [
-          "热核"
-        ],
-        "exclude": [],
-        "source": "llm",
-        "updated_at": "2026-02-05T09:29:35.473130"
-      },
-      "French": {
-        "language": "French",
-        "include": [
-          "thermonucléaire"
-        ],
-        "exclude": [],
-        "source": "llm",
-        "updated_at": "2026-02-05T14:02:44.544065"
-      },
       "Russian": {
         "language": "Russian",
         "include": [
@@ -94,9 +26,9 @@
         ],
         "exclude": [],
         "source": "llm",
-        "updated_at": "2026-02-07T09:15:26.461698"
+        "updated_at": "2026-02-07T12:55:25.583190"
       }
     }
   },
-  "updated_at": "2026-02-07T12:08:39.447547"
+  "updated_at": "2026-02-07T13:03:11.618232"
 }
