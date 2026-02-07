@@ -123,33 +123,28 @@ def render_results_tab(assessments, jurisdiction_map):
         unsafe_allow_html=True,
     )
 
-    # Display table rows with clickable Lens ID buttons
+    # Display table rows with hover effect
     results_container = st.container()
     with results_container:
+        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
+        
         for idx, row in df.iterrows():
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
-
-            with col1:
-                lens_id = row["Lens ID"]
-                if st.button("LOAD", key=f"lens_btn_{idx}_{lens_id}", use_container_width=True):
-                    st.session_state["selected_lens_id_for_analysis"] = lens_id
-
-            with col2:
-                st.write(row["Patent #"])
-
-            with col3:
-                st.write(row["Title"])
-
-            with col4:
-                st.write(row["Inventor(s)"])
-
-            with col5:
-                st.write(row["Jurisdiction"])
-
-            with col6:
-                # Display score as a mini progress bar with percentage
-                score_val = float(row["Score"])
-                st.progress(score_val / 100, text=f"{row['Score']}%")
-
-            with col7:
-                st.write(row["Status"])
+            lens_id = row["Lens ID"]
+            
+            # Create HTML row with hover effect
+            row_html = f"""
+            <div class="results-table-row">
+                <div>Placeholder</div>
+                <div>{row["Patent #"]}</div>
+                <div>{row["Title"]}</div>
+                <div>{row["Inventor(s)"]}</div>
+                <div>{row["Jurisdiction"]}</div>
+                <div style="text-align: center;">{row["Score"]}</div>
+                <div>{row["Status"]}</div>
+            </div>
+            """
+            st.markdown(row_html, unsafe_allow_html=True)
+            
+            # Handle button clicks via session state (displayed above the row)
+            if st.button("LOAD", key=f"lens_btn_{idx}_{lens_id}", use_container_width=True):
+                st.session_state["selected_lens_id_for_analysis"] = lens_id
