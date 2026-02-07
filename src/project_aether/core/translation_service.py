@@ -6,6 +6,7 @@ Supports translation from any language to any language.
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -18,6 +19,7 @@ from project_aether.core.config import get_config
 
 CACHE_VERSION = 1
 DEFAULT_MODEL = "gemini-3-pro-preview"
+MAX_PARALLEL_TRANSLATIONS = 10
 
 
 def _utc_now() -> str:
@@ -324,22 +326,30 @@ def translate_patent_to_english(
             logger.warning(f"✗ Translation failed for {cache_suffix} of {lens_id}: {e}")
             return None
     
-    # 1. Translate Title
-    title_en = translate_field_if_present("title", "biblio.invention_title", "title")
-    if title_en:
-        translated_record["title_en"] = title_en
-        logger.debug(f"Added title_en for {lens_id}")
+    # Define translation tasks
+    translation_tasks = [
+        ("title", "biblio.invention_title", "title", "title_en"),
+        ("abstract", "abstract", "abstract", "abstract_en"),
+        ("claims", "claims", "claims", "claims_en"),
+    ]
     
-    # 2. Translate Abstract
-    abstract_en = translate_field_if_present("abstract", "abstract", "abstract")
-    if abstract_en:
-        translated_record["abstract_en"] = abstract_en
-        logger.debug(f"Added abstract_en for {lens_id}")
-    
-    # 3. Translate Claims
-    claims_en = translate_field_if_present("claims", "claims", "claims")
-    if claims_en:
-        translated_record["claims_en"] = claims_en
-        logger.debug(f"Added claims_en for {lens_id}")
+    # Execute translations in parallel
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_TRANSLATIONS) as executor:
+        # Submit all translation tasks
+        future_to_task = {
+            executor.submit(translate_field_if_present, field_name, nested_path, cache_suffix): (field_name, output_key)
+            for field_name, nested_path, cache_suffix, output_key in translation_tasks
+        }
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_task):
+            field_name, output_key = future_to_task[future]
+            try:
+                result = future.result()
+                if result:
+                    translated_record[output_key] = result
+                    logger.debug(f"Added {output_key} for {lens_id}")
+            except Exception as e:
+                logger.warning(f"✗ Parallel translation failed for {field_name} of {lens_id}: {e}")
     
     return translated_record
