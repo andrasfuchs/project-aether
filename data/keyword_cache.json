@@ -9,9 +9,35 @@
       ],
       "exclude": [],
       "created_at": "2026-02-07T12:55:17.258814"
+    },
+    "0b5c9c74bc1e": {
+      "id": "0b5c9c74bc1e",
+      "label": "spark + hydrogen",
+      "include": [
+        "spark",
+        "electric discharge",
+        "water steam",
+        "water vapor",
+        "hydrogen medium",
+        "hydrogenous medium",
+        "hydrogen environment"
+      ],
+      "exclude": [
+        "spark plug",
+        "ignition system",
+        "internal combustion engine",
+        "automobile",
+        "motor vehicle",
+        "engine"
+      ],
+      "created_at": "2026-02-07T18:42:07.004293"
     }
   },
   "history": [
+    {
+      "id": "0b5c9c74bc1e",
+      "last_used": "2026-02-07T22:10:49.480364"
+    },
     {
       "id": "0beed47fc0cf",
       "last_used": "2026-02-07T13:03:11.618232"
@@ -28,7 +54,31 @@
         "source": "llm",
         "updated_at": "2026-02-07T12:55:25.583190"
       }
+    },
+    "0b5c9c74bc1e": {
+      "Russian": {
+        "language": "Russian",
+        "include": [
+          "искра",
+          "электрический разряд",
+          "водяной пар",
+          "пары воды",
+          "водородная среда",
+          "водородсодержащая среда",
+          "водородная атмосфера"
+        ],
+        "exclude": [
+          "свеча зажигания",
+          "система зажигания",
+          "двигатель внутреннего сгорания",
+          "автомобиль",
+          "автотранспортное средство",
+          "двигатель"
+        ],
+        "source": "llm",
+        "updated_at": "2026-02-07T18:42:41.530085"
+      }
     }
   },
-  "updated_at": "2026-02-07T13:03:11.618232"
+  "updated_at": "2026-02-07T22:10:49.481503"
 }
