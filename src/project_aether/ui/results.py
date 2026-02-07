@@ -83,13 +83,20 @@ def render_results_tab(assessments, jurisdiction_map):
                 grid-template-columns: 1.2fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
                 gap: 1rem;
                 padding: 1rem;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
                 align-items: center;
-                transition: background-color 0.2s ease;
+                transition: all 0.2s ease;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                background: rgba(30, 41, 59, 0.3);
+                margin-bottom: 0.75rem;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             }
             
             .results-table-row:hover {
-                background: rgba(0, 180, 216, 0.05);
+                background: rgba(0, 180, 216, 0.08);
+                border-color: rgba(0, 180, 216, 0.4);
+                box-shadow: 0 4px 12px rgba(0, 180, 216, 0.15);
+                transform: translateY(-2px);
             }
             
             .results-table-container {
