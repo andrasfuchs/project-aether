@@ -22,7 +22,71 @@
       "text": "The utility model relates to the design of a vacuum chamber, which is an element of a thermonuclear reactor or a demonstration thermonuclear neutron source (DEMO-TNS). The vacuum chamber of the thermonuclear reactor comprises a housing formed by inner and outer shells with metal structures located between them, forming a steel-water shield. Wherein the inner shell is double-walled and consists of an inner structural shell and an inner casing connected by mountings. The mountings of the inner casing to the inner structural shell are configured to allow the installation of a blanket module on these mountings rather than on the inner casing. The technical result is maintaining the required temperature of all elements of the vacuum chamber of the thermonuclear reactor both in the normal operating mode and in emergency situations associated with a cooling system failure. 2 fig., 4 tabl., 1 ex.",
       "model": "gemini-3-flash-preview",
       "translated_at": "2026-02-07T10:03:33.879876"
+    },
+    "076-549-932-044-608_title||Russian||English": {
+      "source_id": "076-549-932-044-608_title",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "DEVICE FOR FASTENING A BLANKET MODULE TO A FUSION REACTOR VACUUM VESSEL",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:08:53.682088"
+    },
+    "100-307-019-106-756_title||Russian||English": {
+      "source_id": "100-307-019-106-756_title",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "THERMONUCLEAR REACTOR WITH A Z-SHAPED MAGNETIC FIELD",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:09:36.160463"
+    },
+    "100-307-019-106-756_abstract||Russian||English": {
+      "source_id": "100-307-019-106-756_abstract",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "A thermonuclear reactor with a Z-shaped magnetic field is intended for the production of both thermal and electrical energy from light elements undergoing thermonuclear reactions with the release of energy. This reactor can be used as a source of energy in high-capacity power plants, heating plants, as well as on space stations and large vessels.",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:09:47.805182"
+    },
+    "141-580-998-790-25X_title||Russian||English": {
+      "source_id": "141-580-998-790-25X_title",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "ELECTRICAL CONNECTION OF ELEMENTS INSIDE THE CHAMBER OF A NUCLEAR FUSION REACTOR TO THE REACTOR VESSEL",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:10:06.658363"
+    },
+    "141-580-998-790-25X_abstract||Russian||English": {
+      "source_id": "141-580-998-790-25X_abstract",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "The invention relates to the field of thermonuclear fusion and can be used in devices for electrically connecting in-vessel components of a nuclear fusion reactor to the vacuum vessel of the reactor. The present device for electrically connecting in-vessel components of a nuclear fusion reactor to the vacuum vessel of the reactor comprises laminar electrically conductive members, surface portions of which are oriented in different directions, said members being arranged in the form of a stack between flanges. The device is configured as a single unit in which shaped grooves are formed with connecting walls therebetween. The connecting walls constitute the electrically conductive members and broaden in a profiled manner between the differently oriented surface portions at the junction with the flanges provided on the end portions of the single unit. The technical result of the present invention is an increase in the cyclic strength of the electrically conductive members at the junctions between the members and the flanges and between the differently oriented surface portions (at the bends) of the members. The invention also ensures that the electrically conductive members have similar technical characteristics.",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:10:29.145783"
+    },
+    "171-160-379-616-591_title||Russian||English": {
+      "source_id": "171-160-379-616-591_title",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "VACUUM PLASMA REACTOR",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:10:37.397470"
+    },
+    "171-160-379-616-591_abstract||Russian||English": {
+      "source_id": "171-160-379-616-591_abstract",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "The invention relates to the field of thermonuclear fusion and can be used in devices for the electrical connection of components located inside a thermonuclear reactor chamber to the vacuum vessel of the reactor. A device for the electrical connection of components located inside a thermonuclear reactor chamber to the vacuum vessel of the reactor comprises two identical stacks of electrically conductive plates. The electrically conductive plates are configured in the shape of a symmetrical wave having at least one full period. The plates in a stack are nested one inside another and are connected to flanges for attachment to a component located inside the chamber and to the vacuum vessel. The stacks of electrically conductive plates are mounted with mirror symmetry about a line passing through the centers of symmetry of the flanges. The technical result of the present invention is to ensure a practically identical skin effect on all electrically conductive plates of the device. In addition, the technical result is to reduce the force of attraction between the outermost plates and the middle plates (the force of attraction between conductors carrying unidirectional currents) and to provide a uniform current density distribution in each electrically conductive plate.",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:10:59.685750"
+    },
+    "191-545-224-579-987_title||Russian||English": {
+      "source_id": "191-545-224-579-987_title",
+      "source_language": "Russian",
+      "target_language": "English",
+      "text": "THERMONUCLEAR REACTOR",
+      "model": "gemini-3-flash-preview",
+      "translated_at": "2026-02-07T12:11:07.463561"
     }
   },
-  "updated_at": "2026-02-07T10:03:33.881382"
+  "updated_at": "2026-02-07T12:11:38.129775"
 }
