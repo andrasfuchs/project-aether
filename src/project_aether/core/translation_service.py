@@ -6,20 +6,24 @@ Supports translation from any language to any language.
 from __future__ import annotations
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from google import genai
+from google.genai import types
 
 from project_aether.core.config import get_config
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-pro-preview"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 MAX_PARALLEL_TRANSLATIONS = 10
+
+# Thread-safe lock for cache operations
+_cache_lock = threading.Lock()
 
 
 def _utc_now() -> str:
@@ -118,6 +122,7 @@ def set_cached_translation(
     target_language: str,
     translated_text: str,
     model: str = DEFAULT_MODEL,
+    original_text: Optional[str] = None,
 ) -> None:
     """
     Cache a translation.
@@ -129,6 +134,7 @@ def set_cached_translation(
         target_language: Target language name
         translated_text: The translated text
         model: The model used for translation
+        original_text: The original text before translation (optional)
     """
     translations = cache.setdefault("translations", {})
     cache_key = _make_cache_key(source_id, source_language, target_language)
@@ -140,6 +146,8 @@ def set_cached_translation(
         "model": model,
         "translated_at": _utc_now(),
     }
+    if original_text:
+        translations[cache_key]["original_text"] = original_text
 
 
 def translate_text(
@@ -177,39 +185,23 @@ def translate_text(
         f"Provide only the translated text without any explanation or commentary."
     )
     
-    llm = ChatGoogleGenerativeAI(
+    # Initialize Google GenAI client
+    client = genai.Client(api_key=api_key)
+    
+    # Generate content with Gemini using proper configuration
+    response = client.models.generate_content(
         model=model,
-        google_api_key=api_key,
-        temperature=0.2,
-        model_kwargs={
-            "thinking_config": {
-                "thinking_budget": 1024
-            }
-        }
+        contents=text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=1.0,  # Recommended default for Gemini 3 models
+            thinking_config=types.ThinkingConfig(
+                thinking_level=types.ThinkingLevel.LOW
+            )
+        )
     )
     
-    response = llm.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=text),
-    ])
-    
-    # Handle response.content which might be a string or other type
-    content = response.content
-    if isinstance(content, list):
-        # If content is a list of message parts, extract text from each part
-        text_parts = []
-        for part in content:
-            if isinstance(part, dict) and 'text' in part:
-                text_parts.append(part['text'])
-            elif isinstance(part, str):
-                text_parts.append(part)
-            else:
-                text_parts.append(str(part))
-        content = " ".join(text_parts)
-    elif not isinstance(content, str):
-        content = str(content)
-    
-    return content.strip()
+    return (response.text or "").strip()
 
 def translate_patent_to_english(
     patent_record: Dict[str, Any],
@@ -293,16 +285,19 @@ def translate_patent_to_english(
         if not text_to_translate or not text_to_translate.strip():
             return None
         
+        # Store original text for cache
+        original_text = text_to_translate
+        
         # --- CACHE CHECK: Look up translation in cache ---
         cache_key = _make_cache_key(f"{lens_id}_{cache_suffix}", source_language, "English")
         cached = translation_cache.get("translations", {}).get(cache_key, {}).get("text")
         if cached:
-            logger.info(f"✓ Cache HIT: {cache_suffix} for {lens_id} ({source_language} → English)")
             return cached
         
         # --- CACHE MISS: Translate and cache ---
         try:
-            logger.info(f"⟳ Cache MISS: Translating {cache_suffix} for {lens_id} ({source_language} → English)")
+            text_preview = original_text[:20].replace('\n', ' ')
+            logger.info(f"⟳ Translating {cache_suffix} for {lens_id}: '{text_preview}...' ({source_language} → English)")
             translated = translate_text(
                 text_to_translate,
                 source_language,
@@ -311,19 +306,28 @@ def translate_patent_to_english(
                 model
             )
             
-            # Save translation to cache for future use
-            set_cached_translation(
-                translation_cache,
-                f"{lens_id}_{cache_suffix}",
-                source_language,
-                "English",
-                translated,
-                model
-            )
-            logger.debug(f"✓ Cached translation for {cache_suffix} of {lens_id}")
+            # Save translation to cache for future use (with original text)
+            # Use lock to ensure thread-safe cache updates
+            with _cache_lock:
+                set_cached_translation(
+                    translation_cache,
+                    f"{lens_id}_{cache_suffix}",
+                    source_language,
+                    "English",
+                    translated,
+                    model,
+                    original_text
+                )
+                # Save cache to disk immediately after successful translation
+                try:
+                    save_translation_cache(translation_cache)
+                    logger.info(f"✓ Translation complete for {cache_suffix} of {lens_id}: '{text_preview}...'")
+                except Exception as save_error:
+                    logger.warning(f"Failed to save cache for {cache_suffix} of {lens_id}: {save_error}")
             return translated
         except Exception as e:
-            logger.warning(f"✗ Translation failed for {cache_suffix} of {lens_id}: {e}")
+            text_preview = original_text[:20].replace('\n', ' ')
+            logger.warning(f"✗ Translation failed for {cache_suffix} of {lens_id}: '{text_preview}...' - {e}")
             return None
     
     # Define translation tasks

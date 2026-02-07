@@ -120,10 +120,8 @@ class AnalystAgent:
         jurisdiction = patent_record.get("jurisdiction", "UNKNOWN")
         doc_number = patent_record.get("doc_number", "UNKNOWN")
         
-        # Extract title from nested structure (prefer English translation if available)
-        title_data = patent_record.get("title_en")  # Check for pre-translated title
-        if not title_data:
-            title_data = _safe_get_nested(patent_record, "biblio.invention_title")
+        # Extract title from nested structure (always use original, not translation)
+        title_data = _safe_get_nested(patent_record, "biblio.invention_title")
         if isinstance(title_data, list) and len(title_data) > 0:
             title = title_data[0].get("text", "Untitled") if isinstance(title_data[0], dict) else str(title_data[0])
         elif isinstance(title_data, str):

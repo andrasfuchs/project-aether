@@ -27,6 +27,7 @@ logging.basicConfig(
         logging.StreamHandler()  # Ensure output goes to console/terminal
     ]
 )
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("ProjectAether")
 
 # Explicitly set the LensConnector logger to DEBUG

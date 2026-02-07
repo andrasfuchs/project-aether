@@ -158,7 +158,7 @@ def render_deep_dive(assessment):
                                             break
                                     
                                     if source_abstract and source_language:
-                                        api_key = os.getenv("GOOGLE_API_KEY")
+                                        api_key = os.getenv("GEMINI_API_KEY")
                                         if api_key:
                                             if st.button(f"Translate to {target_language}", key=f"translate_btn_{assessment.lens_id}_{target_language}"):
                                                 # Load translation cache from disk
@@ -179,14 +179,15 @@ def render_deep_dive(assessment):
                                                         assessment.lens_id,
                                                         source_language,
                                                         target_language,
-                                                        translated
+                                                        translated,
+                                                        original_text=source_abstract
                                                     )
                                                     save_translation_cache(translation_cache)
                                                     st.rerun()
                                                 except Exception as e:
                                                     st.error(f"Translation failed: {str(e)}")
                                         else:
-                                            st.warning("GOOGLE_API_KEY not configured. Cannot translate abstract.")
+                                            st.warning("GEMINI_API_KEY not configured. Cannot translate abstract.")
                                     else:
                                         st.info(f"No abstract available for translation to {target_language}.")
                                 elif translated_content == "":

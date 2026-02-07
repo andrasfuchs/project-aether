@@ -11,15 +11,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from google import genai
+from google.genai import types
 
 from project_aether.core.config import get_config
 from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-pro-preview"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 
 
 def _utc_now() -> str:
@@ -205,37 +205,24 @@ def translate_keywords_with_llm(
         },
     }
 
-    llm = ChatGoogleGenerativeAI(
+    # Initialize Google GenAI client
+    client = genai.Client(api_key=api_key)
+    
+    # Generate content with Gemini using proper configuration
+    response = client.models.generate_content(
         model=model,
-        google_api_key=api_key,
-        temperature=0.2,
-        model_kwargs={
-            "thinking_config": {
-                "thinking_budget": 1024
-            }
-        }
+        contents=json.dumps(payload, ensure_ascii=False),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            temperature=1.0,  # Recommended default for Gemini 3 models
+            thinking_config=types.ThinkingConfig(
+                thinking_level=types.ThinkingLevel.LOW
+            )
+        )
     )
 
-    response = llm.invoke([
-        SystemMessage(content=system_prompt),
-        HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
-    ])
-
-    # Handle response.content which might be a string or other type
-    content = response.content
-    if isinstance(content, list):
-        # If content is a list of message parts, extract text from each part
-        text_parts = []
-        for part in content:
-            if isinstance(part, dict) and 'text' in part:
-                text_parts.append(part['text'])
-            elif isinstance(part, str):
-                text_parts.append(part)
-            else:
-                text_parts.append(str(part))
-        content = " ".join(text_parts)
-    elif not isinstance(content, str):
-        content = str(content)
+    # Extract text from response
+    content = response.text or ""
     
     data = _extract_json(content)
     include = normalize_terms(data.get("include", include_terms))

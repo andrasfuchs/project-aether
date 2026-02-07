@@ -18,7 +18,7 @@ class AetherConfig(BaseSettings):
     
     # === API Tokens ===
     lens_org_api_token: str = Field(default="", alias="LENS_ORG_API_TOKEN")
-    google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
+    google_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     serpapi_key: str = Field(default="", alias="SERPAPI_KEY")
     
