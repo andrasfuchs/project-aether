@@ -17,6 +17,7 @@ from project_aether.ui.analysis import render_deep_dive_tab
 from project_aether.ui.results import render_results_tab
 from project_aether.ui.sidebar import render_sidebar
 from project_aether.ui.styles import inject_global_styles
+from project_aether.tools.inpadoc import INPADOC_CODES
 
 # Configure logging
 logging.basicConfig(
@@ -177,73 +178,45 @@ def main():
     with tab_settings:
         st.markdown("### System Parameters")
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("""
-            <div class="glass-card">
-                <h4>API Connections</h4>
-                <p>Manage external services.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col2:
-            st.markdown("""
-            <div class="glass-card">
-                <h4>Model Parameters</h4>
-                <p>Fine-tune relevance thresholds.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            relevance_threshold = st.slider("Relevance Threshold", 0, 100, 40)
-            st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
+        relevance_threshold = st.slider("Relevance Threshold", 0, 100, 40)
+        st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
         st.markdown("---")
-        st.markdown("### Keyword Database")
-        st.info("Configure the lexicon used to detect anomalies and filter false positives.")
-        
-        # Dynamic Keyword Editor
-        if 'keyword_config' in st.session_state:
-            kw_config = st.session_state['keyword_config']
-            
-            # Language Selector (Tabs)
-            languages = list(kw_config.keys())
-            if not languages:
-                st.warning("No languages configured.")
-            else:
-                lang_tabs = st.tabs([f"{l}" for l in languages])
-                
-                for lang, tab in zip(languages, lang_tabs):
-                    with tab:
-                        c1, c2 = st.columns(2)
-                        
-                        with c1:
-                            st.markdown(f"#### Include Keywords")
-                            st.caption("Terms indicating anomalous energy phenomena")
-                            current_pos = kw_config[lang].get('positive', [])
-                            new_pos = st.text_area(
-                                "Comma-separated values",
-                                value=", ".join(current_pos),
-                                height=300,
-                                key=f"pos_{lang}",
-                                label_visibility="collapsed"
-                            )
-                            kw_config[lang]['positive'] = [x.strip() for x in new_pos.split(",") if x.strip()]
-                            
-                        with c2:
-                            st.markdown(f"#### Exclude Keywords")
-                            st.caption("Terms indicating standard industrial technology")
-                            current_neg = kw_config[lang].get('negative', [])
-                            new_neg = st.text_area(
-                                "Comma-separated values",
-                                value=", ".join(current_neg),
-                                height=300,
-                                key=f"neg_{lang}",
-                                label_visibility="collapsed"
-                            )
-                            kw_config[lang]['negative'] = [x.strip() for x in new_neg.split(",") if x.strip()]
+        st.markdown("### Analyst Overview")
+        st.markdown(
+            """
+            - **Legal status forensics**: decodes INPADOC events and patent status to assign a
+              severity level (HIGH/MEDIUM/LOW/UNKNOWN).
+            - **Relevance score (0–100)**: keyword-based scoring on title + abstract + claims,
+              with boosts for hydrogen/plasma terms and penalties for false positives.
+            - **Anomalous detection**: flags over-unity or anomalous-phenomena terminology.
+            - **Classification tags**: extracts high-value IPC/CPC symbols (e.g., fusion/plasma groups).
+            - **Intelligence value**: combines severity, relevance, anomaly flag, and tags to rate
+              each patent as HIGH, MEDIUM, or LOW priority.
+            """
+        )
 
+        st.markdown("---")
+        st.markdown("### INPADOC Status Codes")
+        st.info("Known patent legal status codes used for forensic analysis by jurisdiction.")
 
+        # Create tabs for each jurisdiction
+        jurisdictions = list(INPADOC_CODES.keys())
+        if jurisdictions:
+            jur_tabs = st.tabs(jurisdictions)
 
+            for jur, tab in zip(jurisdictions, jur_tabs):
+                with tab:
+                    codes = INPADOC_CODES[jur]
+                    if codes:
+                        for code, details in codes.items():
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                st.markdown(f"**{code}**")
+                            with col2:
+                                st.markdown(f"{details['description']}")
+                                st.caption(f"*Severity: {details['severity'].value}*")
+                    else:
+                        st.write("No codes configured for this jurisdiction.")
 if __name__ == "__main__":
     main()

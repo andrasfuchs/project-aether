@@ -86,6 +86,51 @@ class AnalystAgent:
     """
     The Domain Expert Agent.
     Performs forensic analysis and semantic scoring of patent data.
+
+     Parameters
+     ----------
+     keyword_config : Optional[Dict]
+          Optional language-keyed keyword configuration. When provided, the agent
+          flattens this structure into two lists via `get_flattened_keywords()`:
+          - `anomalous_keywords`: terms indicating anomalous phenomena
+          - `false_positive_keywords`: terms indicating conventional technology
+          If omitted, `DEFAULT_KEYWORDS` are used.
+
+     Working Methods (Pipeline)
+     --------------------------
+     1) Legal Status Forensics
+         Uses `analyze_legal_status()` to interpret jurisdiction-specific
+         INPADOC event codes and patent status. This produces `StatusAnalysis`
+         with a `severity` of `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` based on
+         refusal/withdrawal/lapse semantics from the INPADOC code database.
+
+     2) Relevance Score Calculation (0-100)
+         Computed in `_calculate_relevance_score(text)` using simple keyword
+         matching on lowercased title + abstract + claims:
+
+         - +15 points per anomalous keyword hit
+         - -20 points per false-positive keyword hit
+         - +10 points if "hydrogen" or "deuterium" present
+         - +10 points if "plasma" or "discharge" present
+
+         The final score is clamped to the range $[0, 100]$.
+
+     3) Anomalous Flag
+         `_is_anomalous_content(text)` returns True if any anomalous keyword is
+         present, or if "over-unity"/"excess" appears alongside "energy"/"heat".
+
+     4) Classification Tag Extraction
+         `_extract_classification_tags(patent_record)` inspects IPC/CPC symbols
+         under `biblio.classifications_ipcr` and `biblio.classifications_cpc`.
+         Any symbol containing a high-value classification marker in
+         `self.high_value_classifications` is added to `classification_tags`.
+
+     5) Intelligence Value Decision
+         `_determine_intelligence_value(...)` applies rule-based thresholds:
+         - HIGH: severity HIGH + relevance >= 50 + anomalous, OR any high-value
+            classification with severity HIGH.
+         - MEDIUM: relevance >= 40 + anomalous, OR severity HIGH with low relevance.
+         - LOW: default fallback.
     """
     
     def __init__(self, keyword_config: Optional[Dict] = None):

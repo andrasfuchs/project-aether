@@ -89,8 +89,14 @@ def render_deep_dive(assessment):
                     lang_name = lang_map.get(lang_code, lang_code.upper())
                     available_abstracts[lang_name] = abstract_obj.get("text", "")
 
+                # Check if abstract_en exists (auto-translated during search)
+                abstract_en = patent_data.get("abstract_en")
+                if abstract_en and "English" not in available_abstracts:
+                    # Add auto-translated English abstract directly
+                    available_abstracts["English (auto-translated)"] = abstract_en
+
                 # List of preferred languages to show
-                preferred_langs = ["English", "Hungarian", "French", "German", "Spanish", "Chinese", "Russian"]
+                preferred_langs = ["English", "English (auto-translated)", "Hungarian", "French", "German", "Spanish", "Chinese", "Russian"]
 
                 # Create tabs for available languages
                 tab_labels = []
@@ -107,10 +113,11 @@ def render_deep_dive(assessment):
                         tab_labels.append(lang)
                         tab_contents.append(available_abstracts[lang])
                 
-                # Add English (auto-translated) tab if not already present in available abstracts
-                if "English" not in available_abstracts:
+                # Only add English auto-translation tab if English is not available and abstract_en doesn't exist
+                # (This handles on-demand translation from other languages)
+                if "English" not in available_abstracts and "English (auto-translated)" not in available_abstracts:
                     tab_labels.append("English (auto-translated)")
-                    tab_contents.append(None)  # Placeholder for auto-translated content
+                    tab_contents.append(None)  # Placeholder for on-demand translation
                 
                 # Add Hungarian (auto-translated) tab if not already present in available abstracts
                 if "Hungarian" not in available_abstracts:
@@ -293,10 +300,11 @@ def render_deep_dive_tab(assessments):
 
     # Selector
     selected_lens_id = st.selectbox(
-        "",
+        "Select Patent",
         options=available_lens_ids,
         index=default_index,
         format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.lens_id == x), 'Unknown')}",
+        label_visibility="collapsed",
     )
 
     # Find selected assessment

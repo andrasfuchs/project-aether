@@ -20,7 +20,10 @@ from project_aether.core.config import get_config
 
 CACHE_VERSION = 1
 DEFAULT_MODEL = "gemini-3-flash-preview"
-MAX_PARALLEL_TRANSLATIONS = 10
+MAX_CONCURRENT_TRANSLATIONS = 10
+
+# Global thread pool for all translations (shared across all patents)
+_executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_TRANSLATIONS)
 
 # Thread-safe lock for cache operations
 _cache_lock = threading.Lock()
@@ -238,6 +241,15 @@ def translate_patent_to_english(
         # No translation needed
         return patent_record
     
+    # Check if patent already has an English abstract
+    abstract_list = patent_record.get("abstract")
+    if isinstance(abstract_list, list):
+        for abstract_entry in abstract_list:
+            if isinstance(abstract_entry, dict) and abstract_entry.get("lang") == "en":
+                # Patent already has English content, skip translation
+                logger.debug(f"Skipping translation for {patent_record.get('lens_id', 'UNKNOWN')}: English abstract already available")
+                return patent_record
+    
     # Create a copy to avoid modifying the original
     translated_record = patent_record.copy()
     lens_id = patent_record.get("lens_id", "UNKNOWN")
@@ -337,23 +349,21 @@ def translate_patent_to_english(
         ("claims", "claims", "claims", "claims_en"),
     ]
     
-    # Execute translations in parallel
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_TRANSLATIONS) as executor:
-        # Submit all translation tasks
-        future_to_task = {
-            executor.submit(translate_field_if_present, field_name, nested_path, cache_suffix): (field_name, output_key)
-            for field_name, nested_path, cache_suffix, output_key in translation_tasks
-        }
-        
-        # Collect results as they complete
-        for future in as_completed(future_to_task):
-            field_name, output_key = future_to_task[future]
-            try:
-                result = future.result()
-                if result:
-                    translated_record[output_key] = result
-                    logger.debug(f"Added {output_key} for {lens_id}")
-            except Exception as e:
-                logger.warning(f"✗ Parallel translation failed for {field_name} of {lens_id}: {e}")
+    # Submit all translation tasks to the global executor
+    future_to_task = {
+        _executor.submit(translate_field_if_present, field_name, nested_path, cache_suffix): (field_name, output_key)
+        for field_name, nested_path, cache_suffix, output_key in translation_tasks
+    }
+    
+    # Collect results as they complete
+    for future in as_completed(future_to_task):
+        field_name, output_key = future_to_task[future]
+        try:
+            result = future.result()
+            if result:
+                translated_record[output_key] = result
+                logger.debug(f"Added {output_key} for {lens_id}")
+        except Exception as e:
+            logger.warning(f"✗ Parallel translation failed for {field_name} of {lens_id}: {e}")
     
     return translated_record
