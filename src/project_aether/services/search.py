@@ -151,14 +151,15 @@ def _build_dashboard_snapshot(total, high, medium, low, mission_id="IN-PROGRESS"
     )
 
 
-def run_patent_search(language_codes, language_names, start_date, end_date, language_map):
+def run_patent_search(language_codes, language_names, start_date, end_date, language_map, dashboard_container=None):
     """Execute the patent search with specified languages, with live dashboard updates.
     
     Performs sequential searches for each language and accumulates all results.
     """
 
-    # Create container for live dashboard
-    dashboard_container = st.empty()
+    # Create container for live dashboard if not provided
+    if dashboard_container is None:
+        dashboard_container = st.empty()
 
     try:
         render_dashboard(

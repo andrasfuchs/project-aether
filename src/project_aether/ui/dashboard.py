@@ -34,7 +34,7 @@ def show_placeholder_dashboard():
 
 def render_dashboard_metrics(dashboard):
     """Render the dashboard with actual data."""
-    st.markdown(f"### Search Status: Completed (Ref: {dashboard.mission_id})")
+    st.markdown("### Search Status: Completed")
 
     col1, col2, col3, col4 = st.columns(4)
 

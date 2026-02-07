@@ -151,20 +151,29 @@ def main():
     
     # --- DASHBOARD TAB ---
     with tab_dashboard:
+        # Create container for dashboard (will be reused for live updates during search)
+        dashboard_container = st.empty()
+        
         if run_mission:
             # Check API configuration
             if not config.is_lens_configured:
                 st.error("Analysis aborted: Lens.org API disconnected")
             else:
-                run_patent_search(selected_language_codes, selected_language_names, start_date, end_date, LANGUAGE_MAP)
+                # Clear old dashboard state before starting new search
+                if 'dashboard' in st.session_state:
+                    del st.session_state['dashboard']
+                # Pass the container to run_patent_search - it will manage all updates
+                run_patent_search(selected_language_codes, selected_language_names, start_date, end_date, LANGUAGE_MAP, dashboard_container)
         else:
+            # Only render dashboard if not currently searching
             dashboard_state = st.session_state.get('dashboard')
-            if dashboard_state:
-                # Render existing dashboard data
-                render_dashboard_metrics(dashboard_state)
-            else:
-                # Show placeholder dashboard
-                show_placeholder_dashboard()
+            with dashboard_container.container():
+                if dashboard_state:
+                    # Render existing dashboard data
+                    render_dashboard_metrics(dashboard_state)
+                else:
+                    # Show placeholder dashboard
+                    show_placeholder_dashboard()
     
     # --- RESULTS TAB ---
     with tab_results:
