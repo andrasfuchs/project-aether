@@ -3,16 +3,11 @@ from datetime import datetime
 import streamlit as st
 
 from project_aether.core.config import get_config
-from project_aether.core.keyword_helpers import get_active_english_keywords, translation_context
+from project_aether.core.keyword_helpers import get_active_english_keywords
 from project_aether.core.keyword_translation import (
     load_keyword_cache,
     save_keyword_cache,
     ensure_keyword_set,
-    get_cached_translation,
-    set_cached_translation,
-    keyword_set_id,
-    default_translation_for_language,
-    translate_keywords_with_llm,
     get_history_entries,
     delete_keyword_set,
 )
@@ -96,70 +91,6 @@ def render_sidebar(language_map):
                 save_keyword_cache(cache)
                 st.session_state["keyword_cache"] = cache
                 st.success("Keyword set saved to history")
-
-        # Show translations for selected languages if not only English
-        target_languages = [lang for lang in selected_language_names if lang != "English"]
-
-        with st.expander("Translations", expanded=bool(target_languages)):
-            if not target_languages:
-                st.caption("No translations needed for English language selection.")
-            else:
-                if not config.google_api_key:
-                    st.warning("LLM translation requires GOOGLE_API_KEY. Using cached or default translations only.")
-
-                if st.button("Generate", use_container_width=True):
-                    set_id = keyword_set_id(updated_include, updated_exclude)
-                    for language in target_languages:
-                        translation_successful = False
-                        if config.google_api_key:
-                            try:
-                                translated_include, translated_exclude = translate_keywords_with_llm(
-                                    include_terms=updated_include,
-                                    exclude_terms=updated_exclude,
-                                    target_language=language,
-                                    context=translation_context(),
-                                    api_key=config.google_api_key,
-                                )
-                                set_cached_translation(
-                                    cache,
-                                    set_id=set_id,
-                                    language=language,
-                                    include_terms=translated_include,
-                                    exclude_terms=translated_exclude,
-                                    source="llm",
-                                )
-                                translation_successful = True
-                            except Exception as exc:
-                                st.warning(f"Translation failed for {language}: {exc}")
-
-                        if not translation_successful:
-                            fallback = default_translation_for_language(language)
-                            if fallback:
-                                translated_include, translated_exclude = fallback
-                                set_cached_translation(
-                                    cache,
-                                    set_id=set_id,
-                                    language=language,
-                                    include_terms=translated_include,
-                                    exclude_terms=translated_exclude,
-                                    source="default",
-                                )
-                    save_keyword_cache(cache)
-                    st.session_state["keyword_cache"] = cache
-                    st.success("Translations updated")
-
-                set_id = keyword_set_id(updated_include, updated_exclude)
-                for language in target_languages:
-                    cached = get_cached_translation(cache, set_id, language)
-                    if cached:
-                        include_list = ", ".join(cached.get("include", []))
-                        exclude_list = ", ".join(cached.get("exclude", []))
-                        st.markdown(f"**{language}**")
-                        st.caption(f"Include: {include_list}")
-                        st.caption(f"Exclude: {exclude_list}")
-                    else:
-                        st.markdown(f"**{language}**")
-                        st.caption("No cached translation yet.")
 
         with st.expander("Previous keyword sets"):
             history_entries = get_history_entries(cache)
