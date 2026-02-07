@@ -19,11 +19,71 @@ from project_aether.core.keyword_translation import (
     translate_keywords_with_llm,
 )
 from project_aether.core.keywords import DEFAULT_KEYWORDS
+from project_aether.core.translation_service import (
+    translate_patent_to_english,
+    load_translation_cache,
+    save_translation_cache,
+)
 from project_aether.tools.lens_api import LensConnector
 from project_aether.ui.dashboard import render_metric_card, show_placeholder_dashboard
 from project_aether.utils.artifacts import ArtifactGenerator
 
 logger = logging.getLogger("ProjectAether")
+
+# Maximum number of patents to retrieve per language for processing
+PATENTS_PER_LANGUAGE = 5
+
+
+def translate_patents_to_english(patents, language_name, api_key, translation_cache, dashboard_container=None, lang_idx=0, num_languages=1):
+    """
+    Translate patent records to English if needed.
+    
+    Args:
+        patents: List of patent records from Lens.org API
+        language_name: Source language (e.g., "Chinese", "Japanese", "English")
+        api_key: Google API key for translation
+        translation_cache: Translation cache dictionary
+        dashboard_container: Streamlit container for dashboard updates (optional)
+        lang_idx: Current language index for progress calculation
+        num_languages: Total number of languages being processed
+    
+    Returns:
+        List of patents with English translations added
+    """
+    if language_name == "English":
+        # No translation needed
+        return patents
+    
+    translated_patents = []
+    for i, patent in enumerate(patents):
+        try:
+            translated_patent = translate_patent_to_english(
+                patent,
+                language_name,
+                api_key,
+                translation_cache
+            )
+            translated_patents.append(translated_patent)
+            
+            # Update progress during translation if dashboard container provided
+            if dashboard_container is not None:
+                progress_percent = int(25 + ((i + 1) / len(patents)) * 5 + (lang_idx * (25 / num_languages)))
+                render_dashboard(
+                    dashboard_container,
+                    _build_dashboard_snapshot(0, 0, 0, 0),
+                    f"Translating {i + 1}/{len(patents)} {language_name} patents to English...",
+                    progress_percent,
+                )
+            
+            # Log progress occasionally
+            if (i + 1) % max(1, len(patents) // 5) == 0:
+                logger.debug(f"Translated {i + 1}/{len(patents)} patents to English")
+        except Exception as e:
+            logger.warning(f"Failed to translate patent {patent.get('lens_id', 'UNKNOWN')}: {e}")
+            # Use original patent if translation fails
+            translated_patents.append(patent)
+    
+    return translated_patents
 
 
 def render_dashboard(dashboard_container, dashboard, status_text, progress_percent):
@@ -123,6 +183,9 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         st.session_state["keyword_cache"] = cache
         analyst = AnalystAgent(keyword_config=keyword_config)
         generator = ArtifactGenerator()
+        
+        # Load translation cache for patent translation
+        translation_cache = load_translation_cache()
 
         all_results = []
         
@@ -184,6 +247,13 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                             )
                             translation_successful = True
                             logger.info(f"Translated keywords to {language_name} using LLM")
+                            # Update progress after successful LLM translation
+                            render_dashboard(
+                                dashboard_container,
+                                _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                                f"Keywords translated to {language_name}",
+                                15 + (lang_idx * (25 / len(language_codes))),
+                            )
                         except Exception as exc:
                             logger.warning(f"LLM translation failed for {language_name}: {exc}")
                     
@@ -219,11 +289,41 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         positive_keywords=final_include_terms,
                         negative_keywords=final_exclude_terms,
                         language=language_code,
+                        limit=PATENTS_PER_LANGUAGE,
                     )
                 )
                 patents = result.get("data", [])
+                
+                # Translate patents to English if needed
+                if language_name != "English" and config.google_api_key and patents:
+                    render_dashboard(
+                        dashboard_container,
+                        _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                        f"Translating {len(patents)} {language_name} patents to English...",
+                        25 + (lang_idx * (25 / len(language_codes))),
+                    )
+                    patents = translate_patents_to_english(
+                        patents,
+                        language_name,
+                        config.google_api_key,
+                        translation_cache,
+                        dashboard_container=dashboard_container,
+                        lang_idx=lang_idx,
+                        num_languages=len(language_codes),
+                    )
+                    # Save updated translation cache
+                    save_translation_cache(translation_cache)
+                    # Update progress after successful patent translation
+                    render_dashboard(
+                        dashboard_container,
+                        _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                        f"Patents translated from {language_name}",
+                        30 + (lang_idx * (25 / len(language_codes))),
+                    )
+                
                 all_results.extend(patents)
                 logger.info(f"Found {len(patents)} patents for {language_name}")
+
             except Exception as exc:
                 logger.error(f"Search failed for {language_name}: {exc}")
                 st.error(f"Search failed for {language_name}: {exc}")

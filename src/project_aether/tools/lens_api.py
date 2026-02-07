@@ -178,6 +178,7 @@ class LensConnector:
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
+        limit: int = 100,
     ) -> Dict:
         """
         Construct a flexible keyword-based patent search query.
@@ -193,6 +194,7 @@ class LensConnector:
             negative_keywords: Keywords to exclude (AND exclusion logic)
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR"). Defaults to "EN".
+            limit: Maximum number of results to return (default: 100)
             positive_keywords: Keywords to search for (OR logic - any match returns result)
             negative_keywords: Keywords to exclude (AND logic - exclude if ANY match)
             patent_status_filter: Optional list of patent statuses to filter by (e.g., ["DISCONTINUED", "WITHDRAWN"])
@@ -283,7 +285,7 @@ class LensConnector:
                 }
             },
             "language": language,
-            "size": 100,  # Retrieve more candidates for filtering
+            "size": limit,
             "include": [
                 "lens_id",
                 "jurisdiction",
@@ -311,6 +313,7 @@ class LensConnector:
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
+        limit: int = 100,
     ) -> Dict:
         """
         Convenience method to search with specified language and no jurisdiction filter.
@@ -323,6 +326,7 @@ class LensConnector:
             negative_keywords: Keywords to exclude (AND logic)
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR")
+            limit: Maximum number of results to return per search (default: 100)
             
         Returns:
             Search results from Lens.org with metadata about filtering
@@ -339,6 +343,7 @@ class LensConnector:
             negative_keywords=negative_keywords,
             patent_status_filter=patent_status_filter,
             language=language,
+            limit=limit,
         )
         
         # Execute the search

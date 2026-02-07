@@ -17,7 +17,7 @@ from project_aether.core.config import get_config
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-3-pro-preview"
 
 
 def _utc_now() -> str:
@@ -208,3 +208,138 @@ def translate_text(
         content = str(content)
     
     return content.strip()
+
+def translate_patent_to_english(
+    patent_record: Dict[str, Any],
+    source_language: str,
+    api_key: str,
+    translation_cache: Dict[str, Any],
+    model: str = DEFAULT_MODEL,
+) -> Dict[str, Any]:
+    """
+    Translate key fields of a patent record to English.
+    
+    Translates:
+    - Title (from biblio.invention_title)
+    - Abstract
+    - Claims
+    
+    Returns a new patent record with English translations added.
+    The original fields are preserved, and translated fields are added with '_en' suffix.
+    
+    Args:
+        patent_record: Patent data from Lens.org API
+        source_language: Source language name (e.g., "Chinese", "Japanese")
+        api_key: Google API key for LLM access
+        translation_cache: Translation cache dictionary (for caching translations)
+        model: The LLM model to use
+    
+    Returns:
+        Updated patent record with English translations added
+    """
+    import logging
+    logger = logging.getLogger("TranslationService")
+    
+    if source_language == "English":
+        # No translation needed
+        return patent_record
+    
+    # Create a copy to avoid modifying the original
+    translated_record = patent_record.copy()
+    lens_id = patent_record.get("lens_id", "UNKNOWN")
+    
+    # Helper function to safely extract and translate text with robust caching
+    def translate_field_if_present(field_name: str, nested_path: str, cache_suffix: str) -> Optional[str]:
+        """
+        Extract a field from the patent record and translate it.
+        Uses translation cache to avoid redundant API calls.
+        
+        Args:
+            field_name: Name of the field (for logging)
+            nested_path: Dot-separated path to extract (e.g., "biblio.invention_title")
+            cache_suffix: Suffix for cache key (e.g., "title", "abstract", "claims")
+        
+        Returns:
+            Translated text or None if field not present
+        """
+        # Extract the field using nested path
+        keys = nested_path.split('.')
+        current = patent_record
+        for key in keys:
+            if isinstance(current, dict):
+                current = current.get(key)
+                if current is None:
+                    return None
+            else:
+                return None
+        
+        if current is None:
+            return None
+        
+        # Handle list fields (take first element if available)
+        if isinstance(current, list):
+            if len(current) == 0:
+                return None
+            item = current[0]
+            if isinstance(item, dict):
+                text_to_translate = item.get("text", "")
+            else:
+                text_to_translate = str(item)
+        else:
+            text_to_translate = str(current) if current else ""
+        
+        if not text_to_translate or not text_to_translate.strip():
+            return None
+        
+        # --- CACHE CHECK: Look up translation in cache ---
+        cache_key = _make_cache_key(f"{lens_id}_{cache_suffix}", source_language, "English")
+        cached = translation_cache.get("translations", {}).get(cache_key, {}).get("text")
+        if cached:
+            logger.info(f"✓ Cache HIT: {cache_suffix} for {lens_id} ({source_language} → English)")
+            return cached
+        
+        # --- CACHE MISS: Translate and cache ---
+        try:
+            logger.info(f"⟳ Cache MISS: Translating {cache_suffix} for {lens_id} ({source_language} → English)")
+            translated = translate_text(
+                text_to_translate,
+                source_language,
+                "English",
+                api_key,
+                model
+            )
+            
+            # Save translation to cache for future use
+            set_cached_translation(
+                translation_cache,
+                f"{lens_id}_{cache_suffix}",
+                source_language,
+                "English",
+                translated,
+                model
+            )
+            logger.debug(f"✓ Cached translation for {cache_suffix} of {lens_id}")
+            return translated
+        except Exception as e:
+            logger.warning(f"✗ Translation failed for {cache_suffix} of {lens_id}: {e}")
+            return None
+    
+    # 1. Translate Title
+    title_en = translate_field_if_present("title", "biblio.invention_title", "title")
+    if title_en:
+        translated_record["title_en"] = title_en
+        logger.debug(f"Added title_en for {lens_id}")
+    
+    # 2. Translate Abstract
+    abstract_en = translate_field_if_present("abstract", "abstract", "abstract")
+    if abstract_en:
+        translated_record["abstract_en"] = abstract_en
+        logger.debug(f"Added abstract_en for {lens_id}")
+    
+    # 3. Translate Claims
+    claims_en = translate_field_if_present("claims", "claims", "claims")
+    if claims_en:
+        translated_record["claims_en"] = claims_en
+        logger.debug(f"Added claims_en for {lens_id}")
+    
+    return translated_record

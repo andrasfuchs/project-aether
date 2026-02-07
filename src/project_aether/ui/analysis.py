@@ -21,11 +21,24 @@ def render_deep_dive(assessment):
 
     # Generate Lens.org link
     lens_url = f"https://www.lens.org/lens/patent/{assessment.lens_id}/frontpage"
+    
+    # Get the original patent record to check for English translation
+    patent_data = next(
+        (p for p in st.session_state.get("all_raw_results", []) if p.get("lens_id") == assessment.lens_id),
+        {},
+    )
+    english_title = patent_data.get("title_en")
+    
+    # Build title section: show English translation in brackets if it exists
+    title_html = f"<h2>{assessment.title}</h2>"
+    if english_title:
+        title_html += f"<p style=\"font-size: 0.95rem; color: #94A3B8; margin-top: -10px;\">({english_title})</p>"
 
     st.markdown(
         f"""
     <div class="glass-card" style="border-top: 4px solid {color}">
-        <h2>{assessment.title}</h2>
+        {title_html}
+        <p>by {assessment.inventors}</p>
         <p style="font-family: monospace; color: {color}; font-size: 1.2rem;">
             {assessment.lens_id} | {assessment.jurisdiction} | {assessment.doc_number}
         </p>

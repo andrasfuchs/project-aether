@@ -110,6 +110,7 @@ class AnalystAgent:
         
         Args:
             patent_record: Patent data from Lens.org API
+                          May include pre-translated fields: title_en, abstract_en, claims_en
             
         Returns:
             PatentAssessment with complete analysis
@@ -119,10 +120,12 @@ class AnalystAgent:
         jurisdiction = patent_record.get("jurisdiction", "UNKNOWN")
         doc_number = patent_record.get("doc_number", "UNKNOWN")
         
-        # Extract title from nested structure
-        title_data = _safe_get_nested(patent_record, "biblio.invention_title")
+        # Extract title from nested structure (prefer English translation if available)
+        title_data = patent_record.get("title_en")  # Check for pre-translated title
+        if not title_data:
+            title_data = _safe_get_nested(patent_record, "biblio.invention_title")
         if isinstance(title_data, list) and len(title_data) > 0:
-            title = title_data[0].get("text", "Untitled")
+            title = title_data[0].get("text", "Untitled") if isinstance(title_data[0], dict) else str(title_data[0])
         elif isinstance(title_data, str):
             title = title_data
         else:
@@ -152,15 +155,21 @@ class AnalystAgent:
         status_analysis = analyze_legal_status(patent_record)
         
         # 2. Semantic Analysis
-        # Extract abstract (can be array or string)
-        abstract_data = patent_record.get("abstract", "")
+        # Extract and use English versions when available
+        
+        # Extract abstract (prefer English translation if available)
+        abstract_data = patent_record.get("abstract_en")
+        if not abstract_data:
+            abstract_data = patent_record.get("abstract", "")
         if isinstance(abstract_data, list) and len(abstract_data) > 0:
             abstract = abstract_data[0].get("text", "") if isinstance(abstract_data[0], dict) else str(abstract_data[0])
         else:
             abstract = str(abstract_data) if abstract_data else ""
         
-        # Extract claims (can be array or string)
-        claims_data = patent_record.get("claims", "")
+        # Extract claims (prefer English translation if available)
+        claims_data = patent_record.get("claims_en")
+        if not claims_data:
+            claims_data = patent_record.get("claims", "")
         if isinstance(claims_data, list) and len(claims_data) > 0:
             claims = claims_data[0].get("text", "") if isinstance(claims_data[0], dict) else str(claims_data[0])
         else:
@@ -171,6 +180,7 @@ class AnalystAgent:
         relevance_score = self._calculate_relevance_score(full_text)
         is_anomalous = self._is_anomalous_content(full_text)
         classification_tags = self._extract_classification_tags(patent_record)
+
         
         # 3. Determine Intelligence Value
         intelligence_value = self._determine_intelligence_value(
