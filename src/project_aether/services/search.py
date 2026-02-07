@@ -97,17 +97,13 @@ def render_dashboard(dashboard_container, dashboard, status_text, progress_perce
         dim_style = "opacity: 0.6; filter: grayscale(0.35);" if dimmed else ""
 
         st.markdown(
-            f"<div style=\"{dim_style}\">### Search Status: {status_text} (Ref: {dashboard.mission_id})</div>",
+            f"<h3 style=\"{dim_style}\">Search Status: {status_text}</h3>",
             unsafe_allow_html=True,
         )
 
         if dimmed:
-            st.markdown(
-                f"<div style=\"{dim_style}\">Progress: {progress_percent}%</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.progress(progress_percent)
+            # Show progress bar with text during processing
+            st.progress(progress_percent / 100.0, text=f"Progress: {progress_percent}%")
 
         col1, col2, col3, col4 = st.columns(4)
 
