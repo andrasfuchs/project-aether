@@ -128,6 +128,13 @@ def main():
             most_recent = history_entries[0]
             st.session_state['keyword_config'].setdefault("English", {})["positive"] = most_recent.get("include", [])
             st.session_state['keyword_config'].setdefault("English", {})["negative"] = most_recent.get("exclude", [])
+            st.session_state['keyword_set_name'] = most_recent.get("label", "")
+            
+            # Set to UPDATE mode since we're loading an existing keyword set
+            st.session_state['keyword_set_mode'] = "UPDATE"
+            st.session_state['keyword_set_update_id'] = most_recent.get("id")
+            st.session_state['keyword_set_original_include'] = most_recent.get("include", [])
+            st.session_state['keyword_set_original_exclude'] = most_recent.get("exclude", [])
         st.session_state['keyword_set_loaded'] = True
     
     # --- HEADER SECTION ---

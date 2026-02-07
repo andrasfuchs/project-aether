@@ -19,9 +19,39 @@ def load_keyword_set_callback(entry):
     if "keyword_config" in st.session_state:
         st.session_state["keyword_config"].setdefault("English", {})["positive"] = entry.get("include", [])
         st.session_state["keyword_config"].setdefault("English", {})["negative"] = entry.get("exclude", [])
+    
+    # Load the keyword set name
+    st.session_state["keyword_set_name"] = entry.get("label", "")
 
     # Increment widget version to force recreation
     st.session_state["keyword_widget_version"] = st.session_state.get("keyword_widget_version", 0) + 1
+
+
+def on_keyword_name_change():
+    """Callback when the keyword set name textbox changes."""
+    name = st.session_state.get("sidebar_set_label", "").strip()
+    cache = st.session_state.get("keyword_cache", {})
+    
+    # Check if a keyword set with this name exists in the cache
+    keyword_sets = cache.get("keyword_sets", {})
+    name_exists = any(
+        entry.get("label") == name 
+        for entry in keyword_sets.values()
+    )
+    
+    # Store mode and the associated set_id if updating
+    if name and name_exists:
+        # Find the set_id for this named entry
+        for set_id, entry in keyword_sets.items():
+            if entry.get("label") == name:
+                st.session_state["keyword_set_mode"] = "UPDATE"
+                st.session_state["keyword_set_update_id"] = set_id
+                st.session_state["keyword_set_original_include"] = entry.get("include", [])
+                st.session_state["keyword_set_original_exclude"] = entry.get("exclude", [])
+                break
+    else:
+        st.session_state["keyword_set_mode"] = "SAVE"
+        st.session_state["keyword_set_update_id"] = None
 
 
 def render_sidebar(language_map):
@@ -62,8 +92,8 @@ def render_sidebar(language_map):
         cache = st.session_state.get("keyword_cache", {})
         widget_version = st.session_state.get("keyword_widget_version", 0)
 
-        with st.expander("Current keyword set", expanded=True):
-            set_label = st.text_input("Name (optional)", key="sidebar_set_label", placeholder="e.g. My Custom Keywords")
+        with st.expander("Keyword set", expanded=True):
+            set_label = st.text_input("Name (optional)", key="sidebar_set_label", value=st.session_state.get("keyword_set_name", ""), placeholder="e.g. My Custom Keywords", on_change=on_keyword_name_change)
 
             include_text = st.text_area(
                 "Include terms",
@@ -86,11 +116,35 @@ def render_sidebar(language_map):
 
             st.caption(f"Include: {len(updated_include)} terms | Exclude: {len(updated_exclude)} terms")
 
-            if st.button("💾 Save", use_container_width=True):
-                ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
-                save_keyword_cache(cache)
-                st.session_state["keyword_cache"] = cache
-                st.success("Keyword set saved to history")
+            # Determine button mode (SAVE vs UPDATE)
+            mode = st.session_state.get("keyword_set_mode", "SAVE")
+            button_label = "💾 Update" if mode == "UPDATE" else "💾 Save"
+
+            if st.button(button_label, use_container_width=True):
+                if mode == "UPDATE":
+                    # In UPDATE mode, check if terms have changed
+                    original_include = st.session_state.get("keyword_set_original_include", [])
+                    original_exclude = st.session_state.get("keyword_set_original_exclude", [])
+                    
+                    if updated_include != original_include or updated_exclude != original_exclude:
+                        # Terms changed - delete old entry and its translations
+                        update_id = st.session_state.get("keyword_set_update_id")
+                        if update_id:
+                            delete_keyword_set(cache, update_id)
+                        
+                        # Save as new keyword set with the same label
+                        ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
+                        save_keyword_cache(cache)
+                        st.session_state["keyword_cache"] = cache
+                        st.success("Keyword set updated")
+                    else:
+                        st.info("No changes to save")
+                else:
+                    # In SAVE mode, just save as new
+                    ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
+                    save_keyword_cache(cache)
+                    st.session_state["keyword_cache"] = cache
+                    st.success("Keyword set saved")
 
         with st.expander("Previous keyword sets"):
             history_entries = get_history_entries(cache)
