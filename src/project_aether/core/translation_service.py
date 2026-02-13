@@ -83,7 +83,7 @@ def _make_cache_key(
     Generate a cache key for a translation.
     
     Args:
-        source_id: Identifier for the source (e.g., lens_id for patents)
+        source_id: Identifier for the source (e.g., record_id for patents)
         source_language: Source language name
         target_language: Target language name
     
@@ -104,7 +104,7 @@ def get_cached_translation(
     
     Args:
         cache: The translation cache dictionary
-        source_id: Identifier for the source (e.g., lens_id)
+        source_id: Identifier for the source (e.g., record_id)
         source_language: Source language name
         target_language: Target language name
     
@@ -132,7 +132,7 @@ def set_cached_translation(
     
     Args:
         cache: The translation cache dictionary
-        source_id: Identifier for the source (e.g., lens_id)
+        source_id: Identifier for the source (e.g., record_id)
         source_language: Source language name
         target_language: Target language name
         translated_text: The translated text
@@ -247,12 +247,23 @@ def translate_patent_to_english(
         for abstract_entry in abstract_list:
             if isinstance(abstract_entry, dict) and abstract_entry.get("lang") == "en":
                 # Patent already has English content, skip translation
-                logger.debug(f"Skipping translation for {patent_record.get('lens_id', 'UNKNOWN')}: English abstract already available")
+                logger.debug(
+                    "Skipping translation for %s: English abstract already available",
+                    patent_record.get("record_id")
+                    or patent_record.get("lens_id")
+                    or patent_record.get("epo_id")
+                    or "UNKNOWN",
+                )
                 return patent_record
     
     # Create a copy to avoid modifying the original
     translated_record = patent_record.copy()
-    lens_id = patent_record.get("lens_id", "UNKNOWN")
+    patent_id = (
+        patent_record.get("record_id")
+        or patent_record.get("lens_id")
+        or patent_record.get("epo_id")
+        or "UNKNOWN"
+    )
     
     # Helper function to safely extract and translate text with robust caching
     def translate_field_if_present(field_name: str, nested_path: str, cache_suffix: str) -> Optional[str]:
@@ -301,7 +312,7 @@ def translate_patent_to_english(
         original_text = text_to_translate
         
         # --- CACHE CHECK: Look up translation in cache ---
-        cache_key = _make_cache_key(f"{lens_id}_{cache_suffix}", source_language, "English")
+        cache_key = _make_cache_key(f"{patent_id}_{cache_suffix}", source_language, "English")
         cached = translation_cache.get("translations", {}).get(cache_key, {}).get("text")
         if cached:
             return cached
@@ -309,7 +320,7 @@ def translate_patent_to_english(
         # --- CACHE MISS: Translate and cache ---
         try:
             text_preview = original_text[:20].replace('\n', ' ')
-            logger.info(f"⟳ Translating {cache_suffix} for {lens_id}: '{text_preview}...' ({source_language} → English)")
+            logger.info(f"⟳ Translating {cache_suffix} for {patent_id}: '{text_preview}...' ({source_language} → English)")
             translated = translate_text(
                 text_to_translate,
                 source_language,
@@ -323,7 +334,7 @@ def translate_patent_to_english(
             with _cache_lock:
                 set_cached_translation(
                     translation_cache,
-                    f"{lens_id}_{cache_suffix}",
+                    f"{patent_id}_{cache_suffix}",
                     source_language,
                     "English",
                     translated,
@@ -333,13 +344,13 @@ def translate_patent_to_english(
                 # Save cache to disk immediately after successful translation
                 try:
                     save_translation_cache(translation_cache)
-                    logger.info(f"✓ Translation complete for {cache_suffix} of {lens_id}: '{text_preview}...'")
+                    logger.info(f"✓ Translation complete for {cache_suffix} of {patent_id}: '{text_preview}...'")
                 except Exception as save_error:
-                    logger.warning(f"Failed to save cache for {cache_suffix} of {lens_id}: {save_error}")
+                    logger.warning(f"Failed to save cache for {cache_suffix} of {patent_id}: {save_error}")
             return translated
         except Exception as e:
             text_preview = original_text[:20].replace('\n', ' ')
-            logger.warning(f"✗ Translation failed for {cache_suffix} of {lens_id}: '{text_preview}...' - {e}")
+            logger.warning(f"✗ Translation failed for {cache_suffix} of {patent_id}: '{text_preview}...' - {e}")
             return None
     
     # Define translation tasks
@@ -362,8 +373,8 @@ def translate_patent_to_english(
             result = future.result()
             if result:
                 translated_record[output_key] = result
-                logger.debug(f"Added {output_key} for {lens_id}")
+                logger.debug(f"Added {output_key} for {patent_id}")
         except Exception as e:
-            logger.warning(f"✗ Parallel translation failed for {field_name} of {lens_id}: {e}")
+            logger.warning(f"✗ Parallel translation failed for {field_name} of {patent_id}: {e}")
     
     return translated_record

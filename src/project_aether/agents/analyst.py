@@ -47,7 +47,11 @@ class PatentAssessment:
     """
     Complete assessment of a patent's intelligence value.
     """
-    lens_id: str
+    record_id: str
+    lens_id: Optional[str]
+    epo_id: Optional[str]
+    provider_name: str
+    provider_record_url: Optional[str]
     jurisdiction: str
     doc_number: str
     title: str
@@ -68,7 +72,11 @@ class PatentAssessment:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
+            "record_id": self.record_id,
             "lens_id": self.lens_id,
+            "epo_id": self.epo_id,
+            "provider_name": self.provider_name,
+            "provider_record_url": self.provider_record_url,
             "jurisdiction": self.jurisdiction,
             "doc_number": self.doc_number,
             "title": self.title,
@@ -161,7 +169,11 @@ class AnalystAgent:
             PatentAssessment with complete analysis
         """
         # Extract basic info
-        lens_id = patent_record.get("lens_id", "UNKNOWN")
+        record_id = patent_record.get("record_id") or patent_record.get("lens_id") or patent_record.get("epo_id") or "UNKNOWN"
+        lens_id = patent_record.get("lens_id")
+        epo_id = patent_record.get("epo_id")
+        provider_name = patent_record.get("provider_name", "unknown")
+        provider_record_url = patent_record.get("provider_record_url")
         jurisdiction = patent_record.get("jurisdiction", "UNKNOWN")
         doc_number = patent_record.get("doc_number", "UNKNOWN")
         
@@ -192,7 +204,7 @@ class AnalystAgent:
                     if name and isinstance(name, str):
                         inventors.append(name)
         
-        logger.info(f"🔬 Analyzing patent: {lens_id} ({jurisdiction}) - Inventors found: {inventors}")
+        logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction}) - Inventors found: {inventors}")
         
         # 1. Legal Status Forensics
         status_analysis = analyze_legal_status(patent_record)
@@ -242,7 +254,11 @@ class AnalystAgent:
         )
         
         return PatentAssessment(
+            record_id=record_id,
             lens_id=lens_id,
+            epo_id=epo_id,
+            provider_name=provider_name,
+            provider_record_url=provider_record_url,
             jurisdiction=jurisdiction,
             doc_number=doc_number,
             title=title,
@@ -426,7 +442,7 @@ class AnalystAgent:
         Analyze multiple patents in batch.
         
         Args:
-            patent_records: List of patent records from Lens.org
+            patent_records: List of patent records from the active provider
             
         Returns:
             List of PatentAssessment objects
@@ -440,7 +456,7 @@ class AnalystAgent:
                 
                 if assessment.intelligence_value == "HIGH":
                     logger.info(
-                        f"🎯 HIGH VALUE TARGET: {assessment.lens_id} "
+                        f"🎯 HIGH VALUE TARGET: {assessment.record_id} "
                         f"({assessment.jurisdiction}) - {assessment.summary}"
                     )
             except Exception as e:

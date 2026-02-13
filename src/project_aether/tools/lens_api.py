@@ -88,6 +88,37 @@ class LensConnector:
         # Rate limiting state
         self._requests_made = 0
         self._window_start = datetime.now()
+
+    @staticmethod
+    def _normalize_lens_patent_record(patent: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize a Lens patent record to the provider-neutral identifier contract.
+
+        The normalized record keeps backwards-compatible Lens fields while adding:
+        - `record_id`: canonical application-wide identifier
+        - `epo_id`: nullable EPO identifier (always `None` in Lens provider)
+        - provider metadata for provider-aware rendering and linking
+
+        Args:
+            patent: Raw patent record returned by Lens.org.
+
+        Returns:
+            Normalized patent record dictionary.
+        """
+        normalized = dict(patent)
+        lens_id = normalized.get("lens_id")
+        normalized["record_id"] = lens_id or normalized.get("record_id") or "UNKNOWN"
+        normalized["lens_id"] = lens_id
+        normalized.setdefault("epo_id", None)
+        normalized["provider_name"] = "lens"
+        normalized["provider_record_id"] = normalized["record_id"]
+        normalized["provider_record_url"] = (
+            f"https://www.lens.org/lens/patent/{lens_id}/frontpage"
+            if lens_id
+            else None
+        )
+        normalized.setdefault("provider_api_url", "https://api.lens.org/patent/search")
+        return normalized
     
     async def _check_rate_limit(self):
         """
@@ -393,8 +424,11 @@ class LensConnector:
             if not has_negative:
                 filtered_results.append(patent)
         
-        # Update result with filtered data
-        result["data"] = filtered_results
+        # Update result with filtered and normalized data
+        result["data"] = [
+            self._normalize_lens_patent_record(patent)
+            for patent in filtered_results
+        ]
         result["filtered_total"] = len(filtered_results)
         
         # Generate detailed logging
@@ -457,10 +491,56 @@ class LensConnector:
         try:
             result = await self.search_patents(query)
             data = result.get("data", [])
-            return data[0] if data else None
+            if not data:
+                return None
+            return self._normalize_lens_patent_record(data[0])
         except LensAPIError as e:
             logger.error(f"Failed to retrieve patent {lens_id}: {e}")
             return None
+
+    async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """
+        Provider-neutral identifier lookup helper.
+
+        Args:
+            identifier: Lens identifier value.
+
+        Returns:
+            Patent record dictionary or `None`.
+        """
+        return await self.get_patent_by_lens_id(identifier)
+
+    async def health_check(self) -> Dict[str, Any]:
+        """
+        Perform a lightweight Lens provider health check.
+
+        This check validates token presence and token formatting readiness.
+        It intentionally avoids a live search request to prevent unnecessary
+        quota consumption in routine diagnostics.
+
+        Returns:
+            Dictionary containing health status details.
+        """
+        if not self.api_token or self.api_token == "your_lens_api_token_here":
+            return {
+                "provider": "lens",
+                "ok": False,
+                "message": "Missing or placeholder Lens API token.",
+            }
+
+        auth_header = self.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return {
+                "provider": "lens",
+                "ok": False,
+                "message": "Lens authorization header is not configured correctly.",
+            }
+
+        return {
+            "provider": "lens",
+            "ok": True,
+            "message": "Lens token is configured (connectivity not probed).",
+        }
 
 
 # Convenience function for simple usage

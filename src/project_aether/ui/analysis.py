@@ -19,12 +19,15 @@ def render_deep_dive(assessment):
     elif assessment.intelligence_value == "MEDIUM":
         color = "#F59E0B"
 
-    # Generate Lens.org link
-    lens_url = f"https://www.lens.org/lens/patent/{assessment.lens_id}/frontpage"
+    provider_url = assessment.provider_record_url
     
     # Get the original patent record to check for English translation
     patent_data = next(
-        (p for p in st.session_state.get("all_raw_results", []) if p.get("lens_id") == assessment.lens_id),
+        (
+            p
+            for p in st.session_state.get("all_raw_results", [])
+            if p.get("record_id") == assessment.record_id
+        ),
         {},
     )
     english_title = patent_data.get("title_en")
@@ -40,13 +43,13 @@ def render_deep_dive(assessment):
         {title_html}
         <p>by {assessment.inventors}</p>
         <p style="font-family: monospace; color: {color}; font-size: 1.2rem;">
-            {assessment.lens_id} | {assessment.jurisdiction} | {assessment.doc_number}
+            {assessment.record_id} | {assessment.jurisdiction} | {assessment.doc_number}
         </p>
-        <p style="margin-top: 10px;">
-            <a href="{lens_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">
-                🔗 View on Lens.org
-            </a>
-        </p>
+        {
+            f'<p style="margin-top: 10px;"><a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">🔗 View on Provider</a></p>'
+            if provider_url
+            else '<p style="margin-top: 10px; color: #94A3B8;">No provider link available.</p>'
+        }
     </div>
     """,
         unsafe_allow_html=True,
@@ -57,7 +60,11 @@ def render_deep_dive(assessment):
     with col1:
         st.markdown("#### Abstract")
         patent_data = next(
-            (p for p in st.session_state.get("all_raw_results", []) if p.get("lens_id") == assessment.lens_id),
+            (
+                p
+                for p in st.session_state.get("all_raw_results", [])
+                if p.get("record_id") == assessment.record_id
+            ),
             {},
         )
 
@@ -147,7 +154,7 @@ def render_deep_dive(assessment):
                                     st.info("Auto-translation not available for this language.")
                                     continue
                                 
-                                translation_key = f"{session_key_prefix}_{assessment.lens_id}"
+                                translation_key = f"{session_key_prefix}_{assessment.record_id}"
                                 translated_content = st.session_state.get(translation_key, None)
                                 
                                 if translated_content is None:
@@ -167,7 +174,7 @@ def render_deep_dive(assessment):
                                     if source_abstract and source_language:
                                         api_key = os.getenv("GEMINI_API_KEY")
                                         if api_key:
-                                            if st.button(f"Translate to {target_language}", key=f"translate_btn_{assessment.lens_id}_{target_language}"):
+                                            if st.button(f"Translate to {target_language}", key=f"translate_btn_{assessment.record_id}_{target_language}"):
                                                 # Load translation cache from disk
                                                 translation_cache = load_translation_cache()
                                                 
@@ -183,7 +190,7 @@ def render_deep_dive(assessment):
                                                     st.session_state[translation_key] = translated
                                                     set_cached_translation(
                                                         translation_cache,
-                                                        assessment.lens_id,
+                                                        assessment.record_id,
                                                         source_language,
                                                         target_language,
                                                         translated,
@@ -284,31 +291,31 @@ def render_deep_dive_tab(assessments):
         st.info("No analysis data available yet.")
         return
 
-    # Check if a specific lens ID was selected from the results tab
-    selected_lens_id_from_results = st.session_state.get("selected_lens_id_for_analysis")
+    # Check if a specific record ID was selected from the results tab
+    selected_record_id_from_results = st.session_state.get("selected_record_id_for_analysis")
 
-    # Determine which lens ID to display
-    available_lens_ids = [a.lens_id for a in assessments]
+    # Determine which record ID to display
+    available_record_ids = [a.record_id for a in assessments]
 
-    # If a lens ID was set from results tab selection, use it; otherwise use the first one
-    if selected_lens_id_from_results and selected_lens_id_from_results in available_lens_ids:
-        default_index = available_lens_ids.index(selected_lens_id_from_results)
+    # If a record ID was set from results tab selection, use it; otherwise use the first one
+    if selected_record_id_from_results and selected_record_id_from_results in available_record_ids:
+        default_index = available_record_ids.index(selected_record_id_from_results)
         # Clear the session state after using it
-        st.session_state["selected_lens_id_for_analysis"] = None
+        st.session_state["selected_record_id_for_analysis"] = None
     else:
         default_index = 0
 
     # Selector
-    selected_lens_id = st.selectbox(
+    selected_record_id = st.selectbox(
         "Select Patent",
-        options=available_lens_ids,
+        options=available_record_ids,
         index=default_index,
-        format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.lens_id == x), 'Unknown')}",
+        format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.record_id == x), 'Unknown')}",
         label_visibility="collapsed",
     )
 
     # Find selected assessment
-    target = next((a for a in assessments if a.lens_id == selected_lens_id), None)
+    target = next((a for a in assessments if a.record_id == selected_record_id), None)
 
     if target:
         render_deep_dive(target)

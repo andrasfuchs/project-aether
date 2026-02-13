@@ -1,4 +1,5 @@
 from datetime import datetime
+import asyncio
 
 import streamlit as st
 
@@ -12,6 +13,8 @@ from project_aether.core.keyword_translation import (
     delete_keyword_set,
 )
 from project_aether.core.keywords import DEFAULT_KEYWORDS
+from project_aether.tools.epo_api import EPOConnector
+from project_aether.tools.lens_api import LensConnector
 
 
 def load_keyword_set_callback(entry):
@@ -181,11 +184,30 @@ def render_sidebar(language_map):
         # System Status in Sidebar
         st.write("#### Connectivity")
 
-        if config.is_lens_configured:
-            st.markdown('<div class="status-badge status-ok">Lens.org API Active</div>', unsafe_allow_html=True)
+        provider_name = "EPO"
+        if config.is_epo_configured:
+            st.markdown(
+                f'<div class="status-badge status-ok">Primary Patent Provider ({provider_name}) Active</div>',
+                unsafe_allow_html=True,
+            )
         else:
-            st.markdown('<div class="status-badge status-err">Lens.org API Offline</div>', unsafe_allow_html=True)
-            st.caption("Missing `LENS_ORG_API_TOKEN`")
+            st.markdown(
+                f'<div class="status-badge status-err">Primary Patent Provider ({provider_name}) Offline</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("Missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
+
+        fallback_name = "LENS"
+        if config.is_lens_configured:
+            st.markdown(
+                f'<div class="status-badge status-ok">{fallback_name} fallback available</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f'<div class="status-badge status-warn">{fallback_name} fallback unavailable</div>',
+                unsafe_allow_html=True,
+            )
 
         st.write("")  # Spacer
 
@@ -193,5 +215,30 @@ def render_sidebar(language_map):
             st.markdown('<div class="status-badge status-ok">LLM service connected</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
+
+        with st.expander("Provider health checks"):
+            st.caption("Runs lightweight provider checks (EPO validates OAuth token; Lens validates token readiness).")
+
+            if st.button("Run primary provider check", use_container_width=True):
+                try:
+                    primary_connector = EPOConnector()
+                    primary_result = asyncio.run(primary_connector.health_check())
+                    if primary_result.get("ok"):
+                        st.success(f"Primary check OK: {primary_result.get('message')}")
+                    else:
+                        st.error(f"Primary check failed: {primary_result.get('message')}")
+                except Exception as exc:
+                    st.error(f"Primary check failed: {exc}")
+
+            if st.button("Run fallback provider check", use_container_width=True):
+                try:
+                    fallback_connector = LensConnector()
+                    fallback_result = asyncio.run(fallback_connector.health_check())
+                    if fallback_result.get("ok"):
+                        st.success(f"Fallback check OK: {fallback_result.get('message')}")
+                    else:
+                        st.warning(f"Fallback check issue: {fallback_result.get('message')}")
+                except Exception as exc:
+                    st.error(f"Fallback check failed: {exc}")
 
     return config, selected_language_codes, selected_language_names, start_date, end_date, run_mission

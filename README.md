@@ -42,7 +42,7 @@ graph TD
 ### Key Components
 
 1. **Manager Agent:** Orchestrates the weekly mission, manages state, and handles error recovery.
-2. **Researcher Agent:** Interfaces with external APIs (Lens.org) via **Model Context Protocol (MCP)**, handling rate limits and query translation.
+2. **Researcher Agent:** Interfaces with external patent providers (EPO OPS primary, Lens fallback), handling rate limits and query translation.
 3. **Analyst Agent:** Performs forensic analysis on INPADOC codes (distinguishing "administrative lapse" from "scientific rejection") and semantic scoring of abstracts.
 4. **Artifacts:** Structured, interactive state objects rendered in the UI, allowing human-in-the-loop verification.
 
@@ -62,8 +62,10 @@ This project uses `uv` for dependency management.
 ### Prerequisites
 
 * Python 3.12+
-* Lens.org API Token
+* EPO OPS Consumer Key + Consumer Secret
 * Google Gemini / OpenAI API Key
+
+Lens.org remains supported as an optional fallback provider during migration.
 
 ### Installation
 
@@ -86,7 +88,7 @@ uv sync
 Copy the example secrets file and add your API keys.
 ```bash
 cp .env.example .env
-# Edit .env with your LENS_API_TOKEN and LLM_API_KEY
+# Edit .env with your EPO credentials and LLM API key
 
 ```
 

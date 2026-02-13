@@ -31,8 +31,9 @@ logging.basicConfig(
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("ProjectAether")
 
-# Explicitly set the LensConnector logger to DEBUG
+# Explicitly set provider connector loggers to DEBUG
 logging.getLogger("LensConnector").setLevel(logging.DEBUG)
+logging.getLogger("EPOConnector").setLevel(logging.DEBUG)
 
 # Jurisdiction mapping: Display Name -> ISO Code(s)
 JURISDICTION_MAP = {
@@ -163,9 +164,13 @@ def main():
         
         if run_mission:
             # Check API configuration
-            if not config.is_lens_configured:
-                st.error("Analysis aborted: Lens.org API disconnected")
+            if not config.is_epo_configured and not config.is_lens_configured:
+                st.error(
+                    "Analysis aborted: EPO primary provider disconnected and Lens fallback is unavailable"
+                )
             else:
+                if not config.is_epo_configured and config.is_lens_configured:
+                    st.warning("EPO primary unavailable. Running with Lens fallback provider.")
                 # Clear old dashboard state before starting new search
                 if 'dashboard' in st.session_state:
                     del st.session_state['dashboard']

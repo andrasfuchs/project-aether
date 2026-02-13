@@ -46,7 +46,8 @@ def render_results_tab(assessments, jurisdiction_map):
             status_display = f"Other ({original})"
 
         row = {
-            "Lens ID": a.lens_id,
+            "Record ID": a.record_id,
+            "Provider": (a.provider_name or "unknown").upper(),
             "Patent #": a.doc_number,
             "Title": formatted_title,
             "Inventor(s)": formatted_inventors,
@@ -64,7 +65,7 @@ def render_results_tab(assessments, jurisdiction_map):
             <style>
             .results-table-header {
                 display: grid;
-                grid-template-columns: 1.2fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                grid-template-columns: 1.2fr 1fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
                 gap: 1rem;
                 padding: 1rem;
                 background: rgba(30, 41, 59, 0.5);
@@ -80,7 +81,7 @@ def render_results_tab(assessments, jurisdiction_map):
             
             .results-table-row {
                 display: grid;
-                grid-template-columns: 1.2fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                grid-template-columns: 1.2fr 1fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
                 gap: 1rem;
                 padding: 1rem;
                 align-items: center;
@@ -118,7 +119,8 @@ def render_results_tab(assessments, jurisdiction_map):
     st.markdown(
         """
             <div class="results-table-header">
-                <div>Lens ID</div>
+                <div>Record ID</div>
+                <div>Provider</div>
                 <div>Patent #</div>
                 <div>Title</div>
                 <div>Inventor(s)</div>
@@ -133,15 +135,16 @@ def render_results_tab(assessments, jurisdiction_map):
     # Display table rows with hover effect
     results_container = st.container()
     with results_container:
-        col1, col2, col3, col4, col5, col6, col7 = st.columns([1.2, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
+        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1.2, 1, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
         
         for idx, row in df.iterrows():
-            lens_id = row["Lens ID"]
+            record_id = row["Record ID"]
             
             # Create HTML row with hover effect
             row_html = f"""
             <div class="results-table-row">
-                <div>Placeholder</div>
+                <div>{row["Record ID"]}</div>
+                <div>{row["Provider"]}</div>
                 <div>{row["Patent #"]}</div>
                 <div>{row["Title"]}</div>
                 <div>{row["Inventor(s)"]}</div>
@@ -153,5 +156,5 @@ def render_results_tab(assessments, jurisdiction_map):
             st.markdown(row_html, unsafe_allow_html=True)
             
             # Handle button clicks via session state (displayed above the row)
-            if st.button("LOAD", key=f"lens_btn_{idx}_{lens_id}", use_container_width=True):
-                st.session_state["selected_lens_id_for_analysis"] = lens_id
+            if st.button("LOAD", key=f"record_btn_{idx}_{record_id}", use_container_width=True):
+                st.session_state["selected_record_id_for_analysis"] = record_id

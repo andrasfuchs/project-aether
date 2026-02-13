@@ -24,6 +24,7 @@ from project_aether.core.translation_service import (
     load_translation_cache,
     save_translation_cache,
 )
+from project_aether.tools.epo_api import EPOConnector
 from project_aether.tools.lens_api import LensConnector
 from project_aether.ui.dashboard import render_metric_card, show_placeholder_dashboard
 from project_aether.utils.artifacts import ArtifactGenerator
@@ -79,7 +80,8 @@ def translate_patents_to_english(patents, language_name, api_key, translation_ca
             if (i + 1) % max(1, len(patents) // 5) == 0:
                 logger.debug(f"Translated {i + 1}/{len(patents)} patents to English")
         except Exception as e:
-            logger.warning(f"Failed to translate patent {patent.get('lens_id', 'UNKNOWN')}: {e}")
+            patent_id = patent.get("record_id") or patent.get("lens_id") or patent.get("epo_id") or "UNKNOWN"
+            logger.warning(f"Failed to translate patent {patent_id}: {e}")
             # Use original patent if translation fails
             translated_patents.append(patent)
     
@@ -171,7 +173,11 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         time.sleep(1)  # UX pacing
 
         config = get_config()
-        connector = LensConnector()
+        # Migration policy: EPO is always primary, Lens is fallback.
+        # This intentionally overrides PATENT_PROVIDER for runtime search routing.
+        selected_provider = "epo"
+        primary_connector = EPOConnector()
+        fallback_connector = LensConnector()
         keyword_config = st.session_state.get("keyword_config", DEFAULT_KEYWORDS)
         cache = st.session_state.get("keyword_cache", load_keyword_cache())
         include_terms, exclude_terms = get_active_english_keywords(keyword_config)
@@ -280,18 +286,51 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
 
             try:
                 # No jurisdiction filtering - search all with specified language
-                result = asyncio.run(
-                    connector.search_by_jurisdiction(
-                        jurisdiction=None,
-                        start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
-                        end_date=end_date.strftime("%Y-%m-%d"),
-                        positive_keywords=final_include_terms,
-                        negative_keywords=final_exclude_terms,
-                        language=language_code,
-                        limit=limit,
-                    )
+                query_kwargs = dict(
+                    jurisdiction=None,
+                    start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
+                    end_date=end_date.strftime("%Y-%m-%d"),
+                    positive_keywords=final_include_terms,
+                    negative_keywords=final_exclude_terms,
+                    language=language_code,
+                    limit=limit,
                 )
+
+                try:
+                    result = asyncio.run(primary_connector.search_by_jurisdiction(**query_kwargs))
+                    provider_used = selected_provider
+                    fallback_reason = None
+                except Exception as primary_exc:
+                    logger.warning(
+                        "Primary provider (%s) failed for %s: %s. Trying fallback provider.",
+                        selected_provider,
+                        language_name,
+                        primary_exc,
+                    )
+                    try:
+                        result = asyncio.run(fallback_connector.search_by_jurisdiction(**query_kwargs))
+                        provider_used = "lens"
+                        fallback_reason = str(primary_exc)
+                    except Exception as fallback_exc:
+                        raise RuntimeError(
+                            "Primary provider failed and fallback provider also failed. "
+                            f"Primary error: {primary_exc} | Fallback error: {fallback_exc}"
+                        ) from fallback_exc
+
                 patents = result.get("data", [])
+
+                for patent in patents:
+                    patent.setdefault(
+                        "record_id",
+                        patent.get("lens_id") or patent.get("epo_id") or "UNKNOWN",
+                    )
+                    patent.setdefault("lens_id", None)
+                    patent.setdefault("epo_id", None)
+                    patent.setdefault("provider_name", provider_used)
+                    patent.setdefault("provider_record_id", patent.get("record_id"))
+                    patent.setdefault("is_fallback", provider_used != selected_provider)
+                    if fallback_reason:
+                        patent.setdefault("fallback_reason", fallback_reason)
                 
                 # Translate patents to English if needed
                 if language_name != "English" and config.google_api_key and patents:
@@ -321,7 +360,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     )
                 
                 all_results.extend(patents)
-                logger.info(f"Found {len(patents)} patents for {language_name}")
+                logger.info("Found %s patents for %s via provider=%s", len(patents), language_name, provider_used)
 
             except Exception as exc:
                 logger.error(f"Search failed for {language_name}: {exc}")
@@ -373,7 +412,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
 
                     if assessment.intelligence_value == "HIGH":
                         logger.info(
-                            f"HIGH VALUE TARGET: {assessment.lens_id} "
+                            f"HIGH VALUE TARGET: {assessment.record_id} "
                             f"({assessment.jurisdiction}) - {assessment.summary}"
                         )
 

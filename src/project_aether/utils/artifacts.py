@@ -101,7 +101,11 @@ class AnalysisArtifact:
     Detailed analysis of a single patent.
     Rendered as a markdown report with diagrams.
     """
-    lens_id: str
+    record_id: str
+    lens_id: Optional[str]
+    epo_id: Optional[str]
+    provider_name: str
+    provider_record_url: Optional[str]
     patent_number: str
     jurisdiction: str
     title: str
@@ -143,7 +147,10 @@ class AnalysisArtifact:
         lines = [
             f"# Analysis: {self.title}",
             "",
-            f"**Lens ID:** {self.lens_id}  ",
+            f"**Record ID:** {self.record_id}  ",
+            f"**Provider:** {self.provider_name.upper()}  ",
+            f"**Lens ID:** {self.lens_id or 'N/A'}  ",
+            f"**EPO ID:** {self.epo_id or 'N/A'}  ",
             f"**Patent Number:** {self.patent_number}  ",
             f"**Jurisdiction:** {self.jurisdiction}  ",
             f"**Intelligence Value:** {self.intelligence_value}  ",
@@ -204,6 +211,7 @@ class AnalysisArtifact:
             "",
             f"- **Published:** {self.date_published or 'Unknown'}",
             f"- **Discontinued:** {self.date_discontinued or 'Unknown'}",
+            f"- **Provider Record URL:** {self.provider_record_url or 'Unavailable'}",
             "",
             "---",
             "",
@@ -368,7 +376,7 @@ class ArtifactGenerator:
         
         Args:
             assessment: Patent assessment data
-            patent_data: Full patent data from Lens.org
+            patent_data: Full patent data from the active patent provider
             
         Returns:
             DeepDiveArtifact
@@ -420,7 +428,11 @@ class ArtifactGenerator:
             abstract = str(abstract_data) if abstract_data else "No abstract available"
         
         artifact = AnalysisArtifact(
-            lens_id=assessment.get("lens_id", "UNKNOWN"),
+            record_id=assessment.get("record_id") or assessment.get("lens_id") or assessment.get("epo_id") or "UNKNOWN",
+            lens_id=assessment.get("lens_id"),
+            epo_id=assessment.get("epo_id"),
+            provider_name=assessment.get("provider_name", "unknown"),
+            provider_record_url=assessment.get("provider_record_url"),
             patent_number=assessment.get("doc_number", "UNKNOWN"),
             jurisdiction=assessment.get("jurisdiction", "UNKNOWN"),
             title=assessment.get("title", "Untitled"),
@@ -438,7 +450,7 @@ class ArtifactGenerator:
             date_discontinued=date_discontinued,
         )
         
-        logger.info(f"🔬 Created deep dive artifact for {artifact.lens_id}")
+        logger.info(f"🔬 Created deep dive artifact for {artifact.record_id}")
         return artifact
 
 
