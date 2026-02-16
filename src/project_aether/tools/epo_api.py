@@ -163,14 +163,14 @@ class EPOConnector:
     @staticmethod
     def _clip_terms(
         terms: List[str],
-        max_terms: int,
+        max_terms: Optional[int],
         max_total_tokens: Optional[int] = None,
     ) -> List[str]:
         """Return a sanitized, bounded list of non-empty keyword terms."""
         output: List[str] = []
         used_tokens = 0
         for term in terms:
-            if len(output) >= max_terms:
+            if max_terms is not None and len(output) >= max_terms:
                 break
             if not term:
                 continue
@@ -183,6 +183,16 @@ class EPOConnector:
                 used_tokens += token_count
         return output
 
+    @staticmethod
+    def _build_ti_ab_phrase_clause(term: str) -> str:
+        """Build a compact title/abstract phrase clause for OPS CQL."""
+        return f'(ti="{term}" OR ab="{term}")'
+
+    @staticmethod
+    def _build_ab_phrase_clause(term: str) -> str:
+        """Build a compact abstract phrase clause for OPS CQL."""
+        return f'(ab="{term}")'
+
     def _build_ops_cql(
         self,
         jurisdictions: Optional[List[str]],
@@ -191,8 +201,9 @@ class EPOConnector:
         positive_keywords: List[str],
         negative_keywords: List[str],
         *,
-        max_positive_terms: int = MAX_PRIMARY_TERMS,
-        max_total_tokens: int = MAX_PRIMARY_TOKEN_BUDGET,
+        max_positive_terms: Optional[int] = None,
+        max_negative_terms: Optional[int] = None,
+        max_total_tokens: Optional[int] = None,
         include_negative: bool = False,
         include_date: bool = True,
     ) -> str:
@@ -200,7 +211,7 @@ class EPOConnector:
         Build a best-effort OPS CQL query from Aether keyword filters.
 
         Approximation notes:
-        - Positive terms are OR'ed across title/abstract/claims.
+        - Positive terms are OR'ed across title/abstract.
         - Negative terms are excluded with NOT clauses.
         - Jurisdiction filtering uses publication number prefix heuristics.
         - Date filtering uses publication date range syntax when provided.
@@ -224,25 +235,30 @@ class EPOConnector:
         )
         negative_terms = self._clip_terms(
             negative_keywords,
-            max_positive_terms,
+            max_negative_terms,
             max_total_tokens=max_total_tokens,
         )
 
+        include_expression: Optional[str] = None
         include_clauses: List[str] = []
         for esc in positive_terms:
-            include_clauses.append(
-                f'(ti all "{esc}" OR ab all "{esc}")'
-            )
+            include_clauses.append(self._build_ti_ab_phrase_clause(esc))
         if include_clauses:
-            clauses.append("(" + " OR ".join(include_clauses) + ")")
+            if len(include_clauses) == 1:
+                include_expression = include_clauses[0]
+            else:
+                include_expression = "(" + " OR ".join(include_clauses) + ")"
 
         if include_negative and negative_terms:
-            exclude_clauses: List[str] = []
-            for esc in negative_terms:
-                exclude_clauses.append(
-                    f'(ti all "{esc}" OR ab all "{esc}")'
-                )
-            clauses.append("NOT (" + " OR ".join(exclude_clauses) + ")")
+            exclude_clauses = [self._build_ab_phrase_clause(esc) for esc in negative_terms]
+            exclude_expression = "(" + " OR ".join(exclude_clauses) + ")"
+            if include_expression:
+                include_expression = f"{include_expression} NOT {exclude_expression}"
+            else:
+                include_expression = f"NOT {exclude_expression}"
+
+        if include_expression:
+            clauses.append(include_expression)
 
         if jurisdictions:
             jurisdiction_filters = [f"pn={j.upper()}*" for j in jurisdictions]
@@ -254,7 +270,7 @@ class EPOConnector:
             clauses.append(f'pd within "{start} {end}"')
 
         if not clauses:
-            return 'ti all "hydrogen"'
+            return 'ti="hydrogen"'
 
         return " AND ".join(clauses)
 
@@ -296,7 +312,7 @@ class EPOConnector:
 
         include_clauses: List[str] = []
         for esc in positive_terms:
-            include_clauses.append(f'{field} all "{esc}"')
+            include_clauses.append(f'{field}="{esc}"')
         if include_clauses:
             clauses.append("(" + " OR ".join(include_clauses) + ")")
 
@@ -310,9 +326,49 @@ class EPOConnector:
             clauses.append(f'pd within "{start} {end}"')
 
         if not clauses:
-            return 'ti all "hydrogen"'
+            return 'ti="hydrogen"'
 
         return " AND ".join(clauses)
+
+    def _build_single_keyword_field_cql(
+        self,
+        *,
+        field: str,
+        keyword: str,
+        jurisdictions: Optional[List[str]],
+        start_date: Optional[str],
+        end_date: Optional[str],
+        include_date: bool = True,
+    ) -> str:
+        """Build strict OPS CQL for one keyword on one field."""
+        escaped = self._escape_cql_term(keyword)
+        if not escaped:
+            raise EPOAPIError("Empty keyword after sanitization.")
+
+        clauses: List[str] = [f'{field}="{escaped}"']
+
+        if jurisdictions:
+            jurisdiction_filters = [f"pn={j.upper()}*" for j in jurisdictions]
+            clauses.append("(" + " OR ".join(jurisdiction_filters) + ")")
+
+        if include_date and start_date:
+            start = start_date.replace("-", "")
+            end = (end_date or datetime.now().strftime("%Y-%m-%d")).replace("-", "")
+            clauses.append(f'pd within "{start} {end}"')
+
+        return " AND ".join(clauses)
+
+    @staticmethod
+    def _normalize_keyword_list(keywords: Optional[List[str]]) -> List[str]:
+        """Normalize keyword list by trimming and dropping empty entries."""
+        if not keywords:
+            return []
+        output: List[str] = []
+        for keyword in keywords:
+            value = (keyword or "").strip()
+            if value:
+                output.append(value)
+        return output
 
     @staticmethod
     def _merge_records_by_id(
@@ -754,9 +810,12 @@ class EPOConnector:
             end_date=end_date,
             positive_keywords=positive_keywords,
             negative_keywords=negative_keywords,
-            include_negative=False,
+            max_positive_terms=None,
+            max_negative_terms=None,
+            max_total_tokens=None,
+            include_negative=True,
         )
-        logger.debug("EPO primary CQL: %s", cql)
+        logger.debug("EPO strict CQL: %s", cql)
 
         payload: Dict[str, Any] = {
             "cql": cql,
@@ -847,349 +906,115 @@ class EPOConnector:
         Returns:
             Search results dictionary with normalized records.
         """
+        _ = patent_status_filter
+        _ = language
+
         jurisdictions = [jurisdiction] if jurisdiction else None
-        query_payload = self.build_keyword_search_query(
-            jurisdictions=jurisdictions,
-            start_date=start_date,
-            end_date=end_date,
-            positive_keywords=positive_keywords,
-            negative_keywords=negative_keywords,
-            patent_status_filter=patent_status_filter,
-            language=language,
-            limit=limit,
-        )
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        if positive_keywords is None:
+            positive_keywords = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+        if negative_keywords is None:
+            negative_keywords = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+
+        positive_keywords = self._normalize_keyword_list(positive_keywords)
+        negative_keywords = self._normalize_keyword_list(negative_keywords)
+
+        if not positive_keywords:
+            raise EPOAPIError(
+                "EPO strict keyword search aborted: at least one include keyword is required."
+            )
+
         strategy_attempts: List[Dict[str, Any]] = []
-        result: Dict[str, Any] = {}
+        included_by_id: Dict[str, Dict[str, Any]] = {}
+        endpoint_used_values: List[str] = []
 
-        field_payloads = [
-            (
-                "title-only",
-                self._build_field_specific_cql(
-                    field="ti",
-                    jurisdictions=jurisdictions,
-                    start_date=start_date,
-                    end_date=end_date,
-                    positive_keywords=positive_keywords or [],
-                    max_positive_terms=MAX_FALLBACK_TERMS,
-                    max_total_tokens=MAX_FALLBACK_TOKEN_BUDGET,
-                    include_date=False,
-                ),
-            ),
-            (
-                "abstract-only",
-                self._build_field_specific_cql(
-                    field="ab",
-                    jurisdictions=jurisdictions,
-                    start_date=start_date,
-                    end_date=end_date,
-                    positive_keywords=positive_keywords or [],
-                    max_positive_terms=MAX_FALLBACK_TERMS,
-                    max_total_tokens=MAX_FALLBACK_TOKEN_BUDGET,
-                    include_date=False,
-                ),
-            ),
-        ]
-
-        if positive_keywords:
-            field_results: Dict[str, Dict[str, Any]] = {}
-            for strategy_name, field_cql in field_payloads:
-                field_payload: Dict[str, Any] = {
-                    "cql": field_cql,
-                    "limit": limit or 100,
-                    "offset": 1,
-                }
-                try:
-                    field_result = await self.search_patents(field_payload)
-                    field_results[strategy_name] = field_result
-                    strategy_attempts.append(
-                        {
-                            "strategy": strategy_name,
-                            "query": field_payload.get("cql"),
-                            "endpoint_used": field_result.get("endpoint_used"),
-                            "endpoint_attempts": field_result.get("endpoint_attempts", []),
-                            "raw_entry_count": field_result.get("raw_entry_count"),
-                            "normalized_count": field_result.get("normalized_count"),
-                            "total_available": field_result.get("total_available"),
-                        }
-                    )
-                except Exception as field_exc:
-                    strategy_attempts.append(
-                        {
-                            "strategy": strategy_name,
-                            "query": field_payload.get("cql"),
-                            "error": str(field_exc),
-                        }
-                    )
-
-            merged_field_records = self._merge_records_by_id(
-                [
-                    field_results.get("title-only", {}).get("data", []),
-                    field_results.get("abstract-only", {}).get("data", []),
-                ]
+        for keyword in positive_keywords:
+            cql = self._build_ops_cql(
+                jurisdictions=jurisdictions,
+                start_date=start_date,
+                end_date=end_date,
+                positive_keywords=[keyword],
+                negative_keywords=negative_keywords,
+                max_positive_terms=None,
+                max_negative_terms=None,
+                max_total_tokens=None,
+                include_negative=True,
+                include_date=bool(start_date),
             )
-
-            if merged_field_records:
-                result = {
-                    "data": merged_field_records,
-                    "total": len(merged_field_records),
-                    "provider": "epo",
-                    "query": "field-split:title+abstract",
-                    "query_strategy": "field-split-title-abstract",
-                    "field_search_mode": "union",
-                }
-
-                title_endpoint = field_results.get("title-only", {}).get("endpoint_used")
-                abstract_endpoint = field_results.get("abstract-only", {}).get("endpoint_used")
-                result["endpoint_used"] = title_endpoint or abstract_endpoint
-
-                result["field_query_details"] = {
-                    "title": {
-                        "query": field_payloads[0][1],
-                        "endpoint_used": title_endpoint,
-                        "count": len(field_results.get("title-only", {}).get("data", [])),
-                    },
-                    "abstract": {
-                        "query": field_payloads[1][1],
-                        "endpoint_used": abstract_endpoint,
-                        "count": len(field_results.get("abstract-only", {}).get("data", [])),
-                    },
-                }
-
-        try:
-            if not result.get("data"):
-                result = await self.search_patents(query_payload)
+            payload = {
+                "cql": cql,
+                "limit": limit or 100,
+                "offset": 1,
+            }
+            try:
+                query_result = await self.search_patents(payload)
+            except EPOAPIError as exc:
                 strategy_attempts.append(
                     {
-                        "strategy": "primary",
-                        "query": query_payload.get("cql"),
-                        "endpoint_used": result.get("endpoint_used"),
-                        "raw_entry_count": result.get("raw_entry_count"),
-                        "normalized_count": result.get("normalized_count"),
-                        "total_available": result.get("total_available"),
+                        "strategy": "strict-include-with-all-excludes",
+                        "keyword": keyword,
+                        "query": cql,
+                        "error": str(exc),
                     }
                 )
-        except EPOAPIError as exc:
-            message = str(exc)
-            if (
-                "CLIENT.CQLSyntax" not in message
-                and "CLIENT.MaximumTotalTerms" not in message
-            ):
-                raise
+                raise EPOAPIError(
+                    "EPO strict keyword search aborted: failed query for include "
+                    f"keyword='{keyword}' with full exclude keyword set. No fallback was applied. "
+                    f"Details: {exc}"
+                ) from exc
+
+            endpoint_used = query_result.get("endpoint_used")
+            if endpoint_used:
+                endpoint_used_values.append(endpoint_used)
 
             strategy_attempts.append(
                 {
-                    "strategy": "primary",
-                    "query": query_payload.get("cql"),
-                    "error": message,
+                    "strategy": "strict-include-with-all-excludes",
+                    "keyword": keyword,
+                    "query": cql,
+                    "endpoint_used": endpoint_used,
+                    "raw_entry_count": query_result.get("raw_entry_count"),
+                    "normalized_count": query_result.get("normalized_count"),
+                    "total_available": query_result.get("total_available"),
                 }
             )
 
-            logger.warning(
-                "EPO query rejected. Retrying with simplified CQL. Error: %s",
-                message,
-            )
+            for record in query_result.get("data", []):
+                record_id = record.get("record_id")
+                if record_id:
+                    included_by_id[record_id] = record
 
-            fallback_cql = self._build_ops_cql(
-                jurisdictions=jurisdictions,
-                start_date=start_date,
-                end_date=end_date,
-                positive_keywords=positive_keywords or [],
-                negative_keywords=negative_keywords or [],
-                max_positive_terms=MAX_FALLBACK_TERMS,
-                max_total_tokens=MAX_FALLBACK_TOKEN_BUDGET,
-                include_negative=False,
-                include_date=False,
-            )
-            logger.debug("EPO simplified CQL: %s", fallback_cql)
+        pre_exclude_records = list(included_by_id.values())
 
-            fallback_payload: Dict[str, Any] = {
-                "cql": fallback_cql,
-                "limit": limit or 100,
-                "offset": 1,
-            }
-            result = await self.search_patents(fallback_payload)
-            strategy_attempts.append(
-                {
-                    "strategy": "simplified-cql",
-                    "query": fallback_payload.get("cql"),
-                    "endpoint_used": result.get("endpoint_used"),
-                    "endpoint_attempts": result.get("endpoint_attempts", []),
-                    "raw_entry_count": result.get("raw_entry_count"),
-                    "normalized_count": result.get("normalized_count"),
-                    "total_available": result.get("total_available"),
-                }
-            )
+        filtered_records = self._apply_negative_keyword_filter(
+            pre_exclude_records,
+            negative_keywords,
+        )
 
-        # If still too many terms for OPS limits, retry with an even smaller query.
-        if not result.get("data") and (positive_keywords or []):
-            aggressive_cql = self._build_ops_cql(
-                jurisdictions=jurisdictions,
-                start_date=start_date,
-                end_date=end_date,
-                positive_keywords=positive_keywords or [],
-                negative_keywords=[],
-                max_positive_terms=2,
-                max_total_tokens=6,
-                include_negative=False,
-                include_date=False,
-            )
-            aggressive_payload: Dict[str, Any] = {
-                "cql": aggressive_cql,
-                "limit": limit or 100,
-                "offset": 1,
-            }
-            try:
-                aggressive_result = await self.search_patents(aggressive_payload)
-                strategy_attempts.append(
-                    {
-                        "strategy": "aggressive-term-budget",
-                        "query": aggressive_payload.get("cql"),
-                        "endpoint_used": aggressive_result.get("endpoint_used"),
-                        "endpoint_attempts": aggressive_result.get("endpoint_attempts", []),
-                        "raw_entry_count": aggressive_result.get("raw_entry_count"),
-                        "normalized_count": aggressive_result.get("normalized_count"),
-                        "total_available": aggressive_result.get("total_available"),
-                    }
-                )
-                if aggressive_result.get("data"):
-                    result = aggressive_result
-                    result["query_strategy"] = "aggressive-term-budget"
-            except Exception as aggressive_exc:
-                strategy_attempts.append(
-                    {
-                        "strategy": "aggressive-term-budget",
-                        "query": aggressive_payload.get("cql"),
-                        "error": str(aggressive_exc),
-                    }
-                )
-
-        probe_diagnostics: List[Dict[str, Any]] = []
-        if not result.get("data") and (positive_keywords or []):
-            probe_diagnostics, probe_records = await self._probe_positive_terms(
-                jurisdictions=jurisdictions,
-                start_date=start_date,
-                end_date=end_date,
-                positive_keywords=positive_keywords or [],
-                limit=limit,
-            )
-            if probe_records:
-                logger.info(
-                    "EPO probe fallback recovered %s records after zero-result primary query.",
-                    len(probe_records),
-                )
-                result["data"] = probe_records
-                result["query_strategy"] = "probe-fallback"
-            else:
-                result["query_strategy"] = "primary-zero-result"
-
-        if not result.get("data") and (positive_keywords or []):
-            relaxed_cql = self._build_relaxed_unfielded_cql(positive_keywords or [])
-            relaxed_payload: Dict[str, Any] = {
-                "cql": relaxed_cql,
-                "limit": limit or 100,
-                "offset": 1,
-            }
-            try:
-                relaxed_result = await self.search_patents(relaxed_payload)
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-unfielded",
-                        "query": relaxed_payload.get("cql"),
-                        "endpoint_used": relaxed_result.get("endpoint_used"),
-                        "endpoint_attempts": relaxed_result.get("endpoint_attempts", []),
-                        "raw_entry_count": relaxed_result.get("raw_entry_count"),
-                        "normalized_count": relaxed_result.get("normalized_count"),
-                        "total_available": relaxed_result.get("total_available"),
-                    }
-                )
-                if relaxed_result.get("data"):
-                    result = relaxed_result
-                    result["query_strategy"] = "relaxed-unfielded"
-            except Exception as relaxed_exc:
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-unfielded",
-                        "query": relaxed_payload.get("cql"),
-                        "error": str(relaxed_exc),
-                    }
-                )
-
-        if not result.get("data") and (positive_keywords or []):
-            ta_cql = self._build_relaxed_ta_cql(positive_keywords or [])
-            ta_payload: Dict[str, Any] = {
-                "cql": ta_cql,
-                "limit": limit or 100,
-                "offset": 1,
-            }
-            try:
-                ta_result = await self.search_patents(ta_payload)
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-ta",
-                        "query": ta_payload.get("cql"),
-                        "endpoint_used": ta_result.get("endpoint_used"),
-                        "endpoint_attempts": ta_result.get("endpoint_attempts", []),
-                        "raw_entry_count": ta_result.get("raw_entry_count"),
-                        "normalized_count": ta_result.get("normalized_count"),
-                        "total_available": ta_result.get("total_available"),
-                    }
-                )
-                if ta_result.get("data"):
-                    result = ta_result
-                    result["query_strategy"] = "relaxed-ta"
-            except Exception as ta_exc:
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-ta",
-                        "query": ta_payload.get("cql"),
-                        "error": str(ta_exc),
-                    }
-                )
-
-        if not result.get("data") and (positive_keywords or []):
-            bare_cql = self._build_relaxed_bare_or_cql(positive_keywords or [])
-            bare_payload: Dict[str, Any] = {
-                "cql": bare_cql,
-                "limit": limit or 100,
-                "offset": 1,
-            }
-            try:
-                bare_result = await self.search_patents(bare_payload)
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-bare-or",
-                        "query": bare_payload.get("cql"),
-                        "endpoint_used": bare_result.get("endpoint_used"),
-                        "endpoint_attempts": bare_result.get("endpoint_attempts", []),
-                        "raw_entry_count": bare_result.get("raw_entry_count"),
-                        "normalized_count": bare_result.get("normalized_count"),
-                        "total_available": bare_result.get("total_available"),
-                    }
-                )
-                if bare_result.get("data"):
-                    result = bare_result
-                    result["query_strategy"] = "relaxed-bare-or"
-            except Exception as bare_exc:
-                strategy_attempts.append(
-                    {
-                        "strategy": "relaxed-bare-or",
-                        "query": bare_payload.get("cql"),
-                        "error": str(bare_exc),
-                    }
-                )
-
-        data = result.get("data", [])
-        filtered = self._apply_negative_keyword_filter(data, negative_keywords)
-        result["data"] = filtered
-        result["pre_filter_total"] = len(data)
-        result["filtered_total"] = len(filtered)
-        result["probe_diagnostics"] = probe_diagnostics
-        result["strategy_attempts"] = strategy_attempts
+        result: Dict[str, Any] = {
+            "data": filtered_records,
+            "total": len(filtered_records),
+            "provider": "epo",
+            "query": "strict-per-include-with-all-excludes",
+            "query_strategy": "strict-user-keywords-with-global-excludes",
+            "strict_mode": True,
+            "field_search_mode": "union",
+            "pre_filter_total": len(pre_exclude_records),
+            "filtered_total": len(filtered_records),
+            "included_unique_total": len(included_by_id),
+            "excluded_unique_total": len(pre_exclude_records) - len(filtered_records),
+            "strategy_attempts": strategy_attempts,
+            "endpoint_used": endpoint_used_values[0] if endpoint_used_values else None,
+            "endpoint_used_all": list(dict.fromkeys(endpoint_used_values)),
+        }
 
         logger.info(
-            "✅ Completed EPO search with %s results (%s after negative filters)",
-            len(data),
-            len(filtered),
+            "✅ Completed strict per-keyword EPO search with %s results (%s include hits, %s exclude hits)",
+            len(filtered_records),
+            len(included_by_id),
+            len(pre_exclude_records) - len(filtered_records),
         )
         return result
 
