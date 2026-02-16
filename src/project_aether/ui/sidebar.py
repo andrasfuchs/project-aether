@@ -216,29 +216,4 @@ def render_sidebar(language_map):
         else:
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
-        with st.expander("Provider health checks"):
-            st.caption("Runs lightweight provider checks (EPO validates OAuth token; Lens validates token readiness).")
-
-            if st.button("Run primary provider check", use_container_width=True):
-                try:
-                    primary_connector = EPOConnector()
-                    primary_result = asyncio.run(primary_connector.health_check())
-                    if primary_result.get("ok"):
-                        st.success(f"Primary check OK: {primary_result.get('message')}")
-                    else:
-                        st.error(f"Primary check failed: {primary_result.get('message')}")
-                except Exception as exc:
-                    st.error(f"Primary check failed: {exc}")
-
-            if st.button("Run fallback provider check", use_container_width=True):
-                try:
-                    fallback_connector = LensConnector()
-                    fallback_result = asyncio.run(fallback_connector.health_check())
-                    if fallback_result.get("ok"):
-                        st.success(f"Fallback check OK: {fallback_result.get('message')}")
-                    else:
-                        st.warning(f"Fallback check issue: {fallback_result.get('message')}")
-                except Exception as exc:
-                    st.error(f"Fallback check failed: {exc}")
-
     return config, selected_language_codes, selected_language_names, start_date, end_date, run_mission
