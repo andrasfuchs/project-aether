@@ -215,6 +215,14 @@ def main():
             st.caption(f"Limits results to {patents_per_language} patents per language.")
 
         st.markdown("---")
+        st.markdown("### Search Diagnostics")
+        diagnostics = st.session_state.get("search_diagnostics", [])
+        if diagnostics:
+            st.json(diagnostics)
+        else:
+            st.caption("No search diagnostics available yet. Run a search to populate this panel.")
+
+        st.markdown("---")
         st.markdown("### Analyst Overview")
         st.markdown(
             """

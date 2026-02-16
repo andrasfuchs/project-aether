@@ -191,6 +191,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         translation_cache = load_translation_cache()
 
         all_results = []
+        search_diagnostics = []
         patents_per_language = st.session_state.get("patents_per_language", PATENTS_PER_LANGUAGE)
         limit = None if patents_per_language >= 1000 else int(patents_per_language)
         
@@ -319,6 +320,38 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
 
                 patents = result.get("data", [])
 
+                diagnostics_entry = {
+                    "language": language_name,
+                    "provider": provider_used,
+                    "fallback_used": provider_used != selected_provider,
+                    "fallback_reason": fallback_reason,
+                    "query": result.get("query"),
+                    "query_strategy": result.get("query_strategy", "primary"),
+                    "endpoint_used": result.get("endpoint_used"),
+                    "endpoint_attempts": result.get("endpoint_attempts", []),
+                    "total_available": result.get("total_available"),
+                    "raw_entry_count": result.get("raw_entry_count"),
+                    "raw_document_count": result.get("raw_document_count"),
+                    "normalized_count": result.get("normalized_count"),
+                    "pre_filter_total": result.get("pre_filter_total", len(patents)),
+                    "filtered_total": result.get("filtered_total", len(patents)),
+                    "probe_diagnostics": result.get("probe_diagnostics", []),
+                    "strategy_attempts": result.get("strategy_attempts", []),
+                    "response_excerpt": result.get("response_excerpt", ""),
+                }
+                search_diagnostics.append(diagnostics_entry)
+
+                logger.info(
+                    "Search diagnostics | lang=%s provider=%s total_available=%s raw_entries=%s normalized=%s pre_filter=%s filtered=%s",
+                    diagnostics_entry["language"],
+                    diagnostics_entry["provider"],
+                    diagnostics_entry["total_available"],
+                    diagnostics_entry["raw_entry_count"],
+                    diagnostics_entry["normalized_count"],
+                    diagnostics_entry["pre_filter_total"],
+                    diagnostics_entry["filtered_total"],
+                )
+
                 for patent in patents:
                     patent.setdefault(
                         "record_id",
@@ -368,9 +401,12 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 continue
 
         st.session_state["all_raw_results"] = all_results
+        st.session_state["search_diagnostics"] = search_diagnostics
 
         if not all_results:
             st.warning("No patents found matching your criteria across all selected languages.")
+            if search_diagnostics:
+                st.info("Search diagnostics were captured. Open Settings → search diagnostics in logs for provider query and count breakdown.")
             return
 
         render_dashboard(
