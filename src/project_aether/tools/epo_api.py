@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import unicodedata
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from xml.etree import ElementTree as ET
@@ -156,9 +157,30 @@ class EPOConnector:
     @staticmethod
     def _escape_cql_term(term: str) -> str:
         """Sanitize and escape user keyword text for safe CQL embedding."""
-        cleaned = re.sub(r"[^0-9A-Za-z\s\-\+/]", " ", term)
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned.replace('"', " ")
+        if not term:
+            return ""
+
+        normalized = unicodedata.normalize("NFKC", term)
+        allowed_punct = {"-", "+", "/", "."}
+        cleaned_chars: List[str] = []
+        for ch in normalized:
+            if ch == '"':
+                cleaned_chars.append(" ")
+                continue
+            if ch.isspace():
+                cleaned_chars.append(" ")
+                continue
+            if ch in allowed_punct:
+                cleaned_chars.append(ch)
+                continue
+            category = unicodedata.category(ch)
+            if category and category[0] in {"L", "M", "N"}:
+                cleaned_chars.append(ch)
+            else:
+                cleaned_chars.append(" ")
+
+        cleaned = re.sub(r"\s+", " ", "".join(cleaned_chars)).strip()
+        return cleaned
 
     @staticmethod
     def _clip_terms(
