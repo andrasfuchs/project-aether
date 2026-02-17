@@ -4,16 +4,33 @@ Performs forensic analysis, semantic scoring, and classification of patent data.
 Based on implementation plan Section 4.1.3.
 """
 
+import json
 import logging
+import re
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
+
+from google import genai
+from google.genai import types
 
 from project_aether.tools.inpadoc import (
     analyze_legal_status,
     StatusAnalysis,
     StatusSeverity,
 )
+from project_aether.core.config import get_config
 from project_aether.core.keywords import DEFAULT_KEYWORDS, get_flattened_keywords
+from project_aether.core.llm_scoring import (
+    DEFAULT_SCORING_MODEL,
+    DEFAULT_SCORING_SYSTEM_PROMPT,
+    apply_prompt_placeholders,
+)
+from project_aether.core.scoring_cache import (
+    load_scoring_cache,
+    save_scoring_cache,
+    get_cached_score,
+    set_cached_score,
+)
 
 logger = logging.getLogger("AnalystAgent")
 
@@ -64,6 +81,7 @@ class PatentAssessment:
     relevance_score: float  # 0-100
     is_anomalous: bool
     classification_tags: List[str]
+    llm_tags: List[str]
     
     # Summary
     intelligence_value: str  # "HIGH", "MEDIUM", "LOW"
@@ -85,6 +103,7 @@ class PatentAssessment:
             "relevance_score": self.relevance_score,
             "is_anomalous": self.is_anomalous,
             "classification_tags": self.classification_tags,
+            "llm_tags": self.llm_tags,
             "intelligence_value": self.intelligence_value,
             "summary": self.summary,
         }
@@ -141,8 +160,17 @@ class AnalystAgent:
          - LOW: default fallback.
     """
     
-    def __init__(self, keyword_config: Optional[Dict] = None):
+    def __init__(
+        self,
+        keyword_config: Optional[Dict] = None,
+        scoring_system_prompt: Optional[str] = None,
+        scoring_model: Optional[str] = None,
+    ):
         self.logger = logger
+        self.config = get_config()
+        self.scoring_system_prompt = scoring_system_prompt or DEFAULT_SCORING_SYSTEM_PROMPT
+        self.scoring_model = scoring_model or DEFAULT_SCORING_MODEL
+        self.scoring_cache = load_scoring_cache()
         
         if keyword_config:
             self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(keyword_config)
@@ -231,8 +259,13 @@ class AnalystAgent:
             claims = str(claims_data) if claims_data else ""
         
         full_text = f"{title} {abstract} {claims}".lower()
-        
-        relevance_score = self._calculate_relevance_score(full_text)
+
+        english_title = str(patent_record.get("title_en") or title)
+        english_abstract = str(patent_record.get("abstract_en") or abstract)
+
+        llm_result = self._score_with_llm(record_id, english_title, english_abstract)
+        relevance_score = llm_result["score"]
+        llm_tags = llm_result["tags"]
         is_anomalous = self._is_anomalous_content(full_text)
         classification_tags = self._extract_classification_tags(patent_record)
 
@@ -267,6 +300,7 @@ class AnalystAgent:
             relevance_score=relevance_score,
             is_anomalous=is_anomalous,
             classification_tags=classification_tags,
+            llm_tags=llm_tags,
             intelligence_value=intelligence_value,
             summary=summary,
         )
@@ -274,7 +308,7 @@ class AnalystAgent:
     def _calculate_relevance_score(self, text: str) -> float:
         """
         Calculate relevance score based on keyword presence.
-        Simple keyword matching (can be replaced with LLM-based scoring later).
+        Legacy scoring used only as a fallback when LLM scoring fails.
         
         Args:
             text: Combined patent text (title + abstract + claims)
@@ -306,6 +340,93 @@ class AnalystAgent:
         
         # Clamp to 0-100 range
         return max(0.0, min(100.0, score))
+
+    def _score_with_llm(self, record_id: str, title: str, abstract: str) -> Dict[str, Any]:
+        system_prompt = apply_prompt_placeholders(
+            self.scoring_system_prompt,
+            self.anomalous_keywords,
+            self.false_positive_keywords,
+        )
+        cached = get_cached_score(
+            self.scoring_cache,
+            title,
+            abstract,
+            system_prompt,
+            self.scoring_model,
+        )
+        if cached:
+            return {
+                "score": float(cached.get("score", 0.0)),
+                "tags": cached.get("tags", []) or [],
+            }
+
+        if not self.config.google_api_key:
+            logger.warning("LLM scoring skipped: GEMINI_API_KEY not configured")
+            return {"score": 0.0, "tags": []}
+
+        positive_keywords = ", ".join(self.anomalous_keywords) or "None"
+        negative_keywords = ", ".join(self.false_positive_keywords) or "None"
+        user_prompt = (
+            f"Title:\n{title}\n\n"
+            f"Abstract:\n{abstract}\n\n"
+            f"Positive keywords:\n{positive_keywords}\n\n"
+            f"Negative keywords:\n{negative_keywords}\n\n"
+            "Return JSON only as {\"score\": number, \"tags\": [\"term\", ...]}."
+        )
+
+        client = genai.Client(api_key=self.config.google_api_key)
+        response = client.models.generate_content(
+            model=self.scoring_model,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.2,
+                response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW
+                ),
+            ),
+        )
+
+        parsed = self._parse_llm_json(response.text or "{}")
+        score = float(parsed.get("score", 0.0))
+        score = max(0.0, min(100.0, score))
+        tags = parsed.get("tags") or []
+        if not isinstance(tags, list):
+            tags = [str(tags)]
+        tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+
+        set_cached_score(
+            self.scoring_cache,
+            record_id=record_id,
+            title=title,
+            abstract=abstract,
+            system_message=system_prompt,
+            model=self.scoring_model,
+            score=score,
+            tags=tags,
+        )
+        save_scoring_cache(self.scoring_cache)
+
+        return {"score": score, "tags": tags}
+
+    def _parse_llm_json(self, text: str) -> Dict[str, Any]:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+            cleaned = re.sub(r"\s*```$", "", cleaned)
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    pass
+
+        return {}
     
     def _is_anomalous_content(self, text: str) -> bool:
         """

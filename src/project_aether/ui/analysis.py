@@ -266,6 +266,21 @@ def render_deep_dive(assessment):
         else:
             st.caption("No specific tags")
 
+        st.markdown(
+            """
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
+            <strong>LLM Tags</strong>
+            <span style="cursor: help; color: #94A3B8;" title="Key terms extracted by the LLM from the title and abstract.">?</span>
+        </div>
+        """,
+            unsafe_allow_html=True,
+        )
+        if getattr(assessment, "llm_tags", None):
+            for tag in assessment.llm_tags:
+                st.markdown(f"`{tag}`")
+        else:
+            st.caption("No LLM tags")
+
         # Notable Features section with icon and tooltip
         features_tooltip = (
             "Notable features highlight unusual or significant technical characteristics detected in the patent, "

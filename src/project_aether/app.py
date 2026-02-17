@@ -11,6 +11,10 @@ from project_aether.core.keyword_translation import (
     load_keyword_cache,
     get_history_entries,
 )
+from project_aether.core.llm_scoring import (
+    DEFAULT_SCORING_MODEL,
+    DEFAULT_SCORING_SYSTEM_PROMPT,
+)
 from project_aether.services.search import run_patent_search
 from project_aether.ui.dashboard import render_dashboard_metrics, show_placeholder_dashboard
 from project_aether.ui.analysis import render_deep_dive_tab
@@ -93,7 +97,14 @@ LANGUAGE_MAP = {
     "Russian": "RU",
     "Spanish": "ES",
     "Portuguese": "PT",
-    "Dutch": "DE",
+    "Italian": "IT",
+    "Swedish": "SV",
+    "Norwegian": "NO",
+    "Finnish": "FI",
+    "Polish": "PL",
+    "Romanian": "RO",
+    "Czech": "CS",
+    "Dutch": "NL",
     "Arabic": "AR",
     "Other": "Other",
 }
@@ -120,6 +131,10 @@ def main():
         st.session_state['keyword_cache'] = load_keyword_cache()
     if 'keyword_widget_version' not in st.session_state:
         st.session_state['keyword_widget_version'] = 0
+    if 'llm_scoring_model' not in st.session_state:
+        st.session_state['llm_scoring_model'] = DEFAULT_SCORING_MODEL
+    if 'llm_scoring_system_prompt' not in st.session_state:
+        st.session_state['llm_scoring_system_prompt'] = DEFAULT_SCORING_SYSTEM_PROMPT
     
     # Load the most recently used keyword set if available
     if 'keyword_set_loaded' not in st.session_state:
@@ -215,6 +230,18 @@ def main():
             st.caption(f"Limits results to {patents_per_language} patents per language.")
 
         st.markdown("---")
+        st.markdown("### LLM Scoring")
+        st.text_input("Scoring model", key="llm_scoring_model")
+        st.text_area(
+            "Scoring system prompt",
+            key="llm_scoring_system_prompt",
+            height=220,
+        )
+        st.caption(
+            "Use {positive_keywords} and {negative_keywords} placeholders to inject the active English keyword lists."
+        )
+
+        st.markdown("---")
         st.markdown("### Search Diagnostics")
         diagnostics = st.session_state.get("search_diagnostics", [])
         if diagnostics:
@@ -228,8 +255,8 @@ def main():
             """
             - **Legal status forensics**: decodes INPADOC events and patent status to assign a
               severity level (HIGH/MEDIUM/LOW/UNKNOWN).
-            - **Relevance score (0–100)**: keyword-based scoring on title + abstract + claims,
-              with boosts for hydrogen/plasma terms and penalties for false positives.
+                        - **Relevance score (0–100)**: LLM-based scoring on the English title + abstract,
+                            weighted by the configured system prompt and active keywords.
             - **Anomalous detection**: flags over-unity or anomalous-phenomena terminology.
             - **Classification tags**: extracts high-value IPC/CPC symbols (e.g., fusion/plasma groups).
             - **Intelligence value**: combines severity, relevance, anomaly flag, and tags to rate

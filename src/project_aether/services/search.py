@@ -19,6 +19,10 @@ from project_aether.core.keyword_translation import (
     translate_keywords_with_llm,
 )
 from project_aether.core.keywords import DEFAULT_KEYWORDS
+from project_aether.core.llm_scoring import (
+    DEFAULT_SCORING_MODEL,
+    DEFAULT_SCORING_SYSTEM_PROMPT,
+)
 from project_aether.core.translation_service import (
     translate_patent_to_english,
     load_translation_cache,
@@ -184,7 +188,13 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         ensure_keyword_set(cache, include_terms, exclude_terms)
         save_keyword_cache(cache)
         st.session_state["keyword_cache"] = cache
-        analyst = AnalystAgent(keyword_config=keyword_config)
+        scoring_model = st.session_state.get("llm_scoring_model", DEFAULT_SCORING_MODEL)
+        scoring_prompt = st.session_state.get("llm_scoring_system_prompt", DEFAULT_SCORING_SYSTEM_PROMPT)
+        analyst = AnalystAgent(
+            keyword_config=keyword_config,
+            scoring_model=scoring_model,
+            scoring_system_prompt=scoring_prompt,
+        )
         generator = ArtifactGenerator()
         
         # Load translation cache for patent translation
