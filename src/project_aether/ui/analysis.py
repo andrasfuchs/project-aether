@@ -52,14 +52,14 @@ def render_deep_dive(assessment):
         </p>
         <div style="margin-top: 10px; display: flex; gap: 15px;">
             {
-                f'<a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">🔗 View on Provider</a>'
+                f'<a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">View on Provider</a>'
                 if provider_url
-                else '<span style="color: #94A3B8;">No provider link available.</span>'
+                else '<span style="color: #94A3B8;">No external patent link available.</span>'
             }
             {
-                f'<a href="{legal_history_url}" target="_blank" style="color: #10B981; text-decoration: none;">⚖️ Legal History</a>'
+                f'<a href="{legal_history_url}" target="_blank" style="color: #10B981; text-decoration: none;">Legal History</a>'
                 if legal_history_url
-                else ''
+                else '<span style="color: #94A3B8;">No legal history link available.</span>'
             }
         </div>
     </div>

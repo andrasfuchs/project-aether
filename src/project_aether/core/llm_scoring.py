@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Iterable
 
 
-DEFAULT_SCORING_MODEL = "gemini-3-pro-preview"
+DEFAULT_SCORING_MODEL = "gemini-3-flash-preview"
 
 DEFAULT_SCORING_SYSTEM_PROMPT = (
     "You are a patent relevance scoring model for anomalous energy research. "
