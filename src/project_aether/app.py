@@ -253,14 +253,12 @@ def main():
         st.markdown("### Analyst Overview")
         st.markdown(
             """
-            - **Legal status forensics**: decodes INPADOC events and patent status to assign a
-              severity level (HIGH/MEDIUM/LOW/UNKNOWN).
-                        - **Relevance score (0–100)**: LLM-based scoring on the English title + abstract,
-                            weighted by the configured system prompt and active keywords.
-            - **Anomalous detection**: flags over-unity or anomalous-phenomena terminology.
-            - **Classification tags**: extracts high-value IPC/CPC symbols (e.g., fusion/plasma groups).
-            - **Intelligence value**: combines severity, relevance, anomaly flag, and tags to rate
-              each patent as HIGH, MEDIUM, or LOW priority.
+            - **Legal status**: decodes INPADOC events and patent status
+            - **Relevance score (0–100)**: LLM-based scoring on the English title + abstract,
+                weighted by the configured system prompt and active keywords.
+            - **LLM tags and notable features**: extracts key terms and short feature summaries
+                from the patent text for quick analyst triage.
+            - **Caching**: stores LLM scoring outputs with the model name, prompt, and UTC timestamp.
             """
         )
 

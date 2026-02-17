@@ -82,6 +82,7 @@ class PatentAssessment:
     is_anomalous: bool
     classification_tags: List[str]
     llm_tags: List[str]
+    llm_features: List[str]
     
     # Summary
     intelligence_value: str  # "HIGH", "MEDIUM", "LOW"
@@ -104,6 +105,7 @@ class PatentAssessment:
             "is_anomalous": self.is_anomalous,
             "classification_tags": self.classification_tags,
             "llm_tags": self.llm_tags,
+            "llm_features": self.llm_features,
             "intelligence_value": self.intelligence_value,
             "summary": self.summary,
         }
@@ -232,7 +234,7 @@ class AnalystAgent:
                     if name and isinstance(name, str):
                         inventors.append(name)
         
-        logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction}) - Inventors found: {inventors}")
+        logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction})")
         
         # 1. Legal Status Forensics
         status_analysis = analyze_legal_status(patent_record)
@@ -266,6 +268,7 @@ class AnalystAgent:
         llm_result = self._score_with_llm(record_id, english_title, english_abstract)
         relevance_score = llm_result["score"]
         llm_tags = llm_result["tags"]
+        llm_features = llm_result["features"]
         is_anomalous = self._is_anomalous_content(full_text)
         classification_tags = self._extract_classification_tags(patent_record)
 
@@ -301,6 +304,7 @@ class AnalystAgent:
             is_anomalous=is_anomalous,
             classification_tags=classification_tags,
             llm_tags=llm_tags,
+            llm_features=llm_features,
             intelligence_value=intelligence_value,
             summary=summary,
         )
@@ -358,11 +362,12 @@ class AnalystAgent:
             return {
                 "score": float(cached.get("score", 0.0)),
                 "tags": cached.get("tags", []) or [],
+                "features": cached.get("features", []) or [],
             }
 
         if not self.config.google_api_key:
             logger.warning("LLM scoring skipped: GEMINI_API_KEY not configured")
-            return {"score": 0.0, "tags": []}
+            return {"score": 0.0, "tags": [], "features": []}
 
         positive_keywords = ", ".join(self.anomalous_keywords) or "None"
         negative_keywords = ", ".join(self.false_positive_keywords) or "None"
@@ -371,7 +376,8 @@ class AnalystAgent:
             f"Abstract:\n{abstract}\n\n"
             f"Positive keywords:\n{positive_keywords}\n\n"
             f"Negative keywords:\n{negative_keywords}\n\n"
-            "Return JSON only as {\"score\": number, \"tags\": [\"term\", ...]}."
+            "Return JSON only as {\"score\": number, \"tags\": [\"term\", ...], "
+            "\"features\": [\"short phrase\", ...]}."
         )
 
         client = genai.Client(api_key=self.config.google_api_key)
@@ -396,6 +402,11 @@ class AnalystAgent:
             tags = [str(tags)]
         tags = [str(tag).strip() for tag in tags if str(tag).strip()]
 
+        features = parsed.get("features") or []
+        if not isinstance(features, list):
+            features = [str(features)]
+        features = [str(feature).strip() for feature in features if str(feature).strip()]
+
         set_cached_score(
             self.scoring_cache,
             record_id=record_id,
@@ -405,10 +416,11 @@ class AnalystAgent:
             model=self.scoring_model,
             score=score,
             tags=tags,
+            features=features,
         )
         save_scoring_cache(self.scoring_cache)
 
-        return {"score": score, "tags": tags}
+        return {"score": score, "tags": tags, "features": features}
 
     def _parse_llm_json(self, text: str) -> Dict[str, Any]:
         cleaned = text.strip()

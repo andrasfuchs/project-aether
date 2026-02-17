@@ -28,6 +28,13 @@ from project_aether.core.translation_service import (
     load_translation_cache,
     save_translation_cache,
 )
+from project_aether.core.search_cache import (
+    load_search_cache,
+    save_search_cache,
+    get_cached_search_results,
+    set_cached_search_results,
+    clean_expired_entries,
+)
 from project_aether.tools.epo_api import EPOConnector
 from project_aether.tools.lens_api import LensConnector
 from project_aether.ui.dashboard import render_metric_card, show_placeholder_dashboard
@@ -199,6 +206,13 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         
         # Load translation cache for patent translation
         translation_cache = load_translation_cache()
+        
+        # Load search cache to avoid redundant API calls
+        search_cache = load_search_cache()
+        # Clean expired entries to keep cache small
+        expired_count = clean_expired_entries(search_cache)
+        if expired_count > 0:
+            logger.info(f"Cleaned {expired_count} expired search cache entries")
 
         all_results = []
         search_diagnostics = []
@@ -307,26 +321,68 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     limit=limit,
                 )
 
-                try:
-                    result = asyncio.run(primary_connector.search_by_jurisdiction(**query_kwargs))
-                    provider_used = selected_provider
-                    fallback_reason = None
-                except Exception as primary_exc:
-                    logger.warning(
-                        "Primary provider (%s) failed for %s: %s. Trying fallback provider.",
-                        selected_provider,
-                        language_name,
-                        primary_exc,
-                    )
+                # Check cache before making API call
+                cached_result = get_cached_search_results(
+                    cache=search_cache,
+                    jurisdiction=query_kwargs["jurisdiction"],
+                    start_date=query_kwargs["start_date"],
+                    end_date=query_kwargs["end_date"],
+                    positive_keywords=query_kwargs["positive_keywords"],
+                    negative_keywords=query_kwargs["negative_keywords"],
+                    patent_status_filter=None,
+                    language=query_kwargs["language"],
+                    limit=query_kwargs["limit"],
+                )
+                
+                if cached_result is not None:
+                    logger.info(f"Using cached search results for {language_name}")
+                    result = cached_result
+                    provider_used = result.get("provider_used", selected_provider)
+                    fallback_reason = result.get("fallback_reason")
+                else:
+                    # Cache miss - perform actual search
                     try:
-                        result = asyncio.run(fallback_connector.search_by_jurisdiction(**query_kwargs))
-                        provider_used = "lens"
-                        fallback_reason = str(primary_exc)
-                    except Exception as fallback_exc:
-                        raise RuntimeError(
-                            "Primary provider failed and fallback provider also failed. "
-                            f"Primary error: {primary_exc} | Fallback error: {fallback_exc}"
-                        ) from fallback_exc
+                        result = asyncio.run(primary_connector.search_by_jurisdiction(**query_kwargs))
+                        provider_used = selected_provider
+                        fallback_reason = None
+                    except Exception as primary_exc:
+                        logger.warning(
+                            "Primary provider (%s) failed for %s: %s. Trying fallback provider.",
+                            selected_provider,
+                            language_name,
+                            primary_exc,
+                        )
+                        try:
+                            result = asyncio.run(fallback_connector.search_by_jurisdiction(**query_kwargs))
+                            provider_used = "lens"
+                            fallback_reason = str(primary_exc)
+                        except Exception as fallback_exc:
+                            raise RuntimeError(
+                                "Primary provider failed and fallback provider also failed. "
+                                f"Primary error: {primary_exc} | Fallback error: {fallback_exc}"
+                            ) from fallback_exc
+                    
+                    # Add provider metadata to result for caching
+                    result["provider_used"] = provider_used
+                    if fallback_reason:
+                        result["fallback_reason"] = fallback_reason
+                    
+                    # Cache the successful result
+                    set_cached_search_results(
+                        cache=search_cache,
+                        jurisdiction=query_kwargs["jurisdiction"],
+                        start_date=query_kwargs["start_date"],
+                        end_date=query_kwargs["end_date"],
+                        positive_keywords=query_kwargs["positive_keywords"],
+                        negative_keywords=query_kwargs["negative_keywords"],
+                        patent_status_filter=None,
+                        language=query_kwargs["language"],
+                        limit=query_kwargs["limit"],
+                        results=result,
+                    )
+                    # Save cache after adding new entry
+                    save_search_cache(search_cache)
+                    logger.info(f"Cached search results for {language_name}")
 
                 patents = result.get("data", [])
 

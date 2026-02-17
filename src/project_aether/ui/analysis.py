@@ -233,7 +233,7 @@ def render_deep_dive(assessment):
         # Relevance score with icon and tooltip
         relevance_tooltip = (
             "Relevance score indicates how closely this patent matches the search criteria. "
-            "Based on keyword matching in title, abstract, and claims, combined with context analysis."
+            "Based on LLM scoring over the English title and abstract with keyword weighting."
         )
         st.markdown(
             f"""
@@ -245,26 +245,6 @@ def render_deep_dive(assessment):
             unsafe_allow_html=True,
         )
         st.progress(assessment.relevance_score / 100, text=f"{assessment.relevance_score:.1f}%")
-
-        # Tags section with icon and tooltip
-        tags_tooltip = (
-            "Classification tags identify key technical domains and subject areas covered by the patent. "
-            "These help categorize and filter related technologies."
-        )
-        st.markdown(
-            f"""
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
-            <strong>Tags</strong>
-            <span style="cursor: help; color: #94A3B8;" title="{tags_tooltip}">?</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-        if assessment.classification_tags:
-            for tag in assessment.classification_tags:
-                st.markdown(f"`{tag}`")
-        else:
-            st.caption("No specific tags")
 
         st.markdown(
             """
@@ -279,7 +259,7 @@ def render_deep_dive(assessment):
             for tag in assessment.llm_tags:
                 st.markdown(f"`{tag}`")
         else:
-            st.caption("No LLM tags")
+            st.caption("No tags")
 
         # Notable Features section with icon and tooltip
         features_tooltip = (
@@ -295,8 +275,9 @@ def render_deep_dive(assessment):
         """,
             unsafe_allow_html=True,
         )
-        if assessment.is_anomalous:
-            st.markdown("`Heat signature detected`")
+        if getattr(assessment, "llm_features", None):
+            for feature in assessment.llm_features:
+                st.markdown(f"- {feature}")
         else:
             st.caption("None detected")
 

@@ -92,6 +92,7 @@ def set_cached_score(
     model: str,
     score: float,
     tags: list[str],
+    features: list[str],
 ) -> Dict[str, Any]:
     cache_key = _make_cache_key(title, abstract, system_message, model)
     entries = cache.setdefault("entries", {})
@@ -103,6 +104,7 @@ def set_cached_score(
         "model": model,
         "score": score,
         "tags": tags,
+        "features": features,
         "scored_at": _utc_now(),
     }
     entries[cache_key] = entry

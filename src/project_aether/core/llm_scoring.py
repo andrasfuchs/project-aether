@@ -22,7 +22,8 @@ DEFAULT_SCORING_SYSTEM_PROMPT = (
     "Positive keywords should increase relevance, negative keywords should decrease it. "
     "Positive keywords: {positive_keywords}\n"
     "Negative keywords: {negative_keywords}\n"
-    "Return JSON only with keys: score (number 0-100) and tags (array of short terms)."
+    "Return JSON only with keys: score (number 0-100), tags (array of short terms), "
+    "and features (array of short notable feature phrases)."
 )
 
 
