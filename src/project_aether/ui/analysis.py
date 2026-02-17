@@ -241,7 +241,7 @@ def render_deep_dive(assessment):
             st.markdown(
                 f"""
             <div style="display: flex; align-items: center; gap: 8px;">
-                <h4 style="margin: 0; color: {severity_color};">Legal Status</h4>
+                <h4 style="margin: 0;">Legal Status</h4>
             </div>
             """,
                 unsafe_allow_html=True,
@@ -289,8 +289,6 @@ def render_deep_dive(assessment):
                 """,
                     unsafe_allow_html=True,
                 )
-        
-        st.divider()
         
         # Relevance section with tooltip
         st.markdown(
