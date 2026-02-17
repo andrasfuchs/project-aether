@@ -231,11 +231,18 @@ def main():
 
         st.markdown("---")
         st.markdown("### LLM Scoring")
-        st.text_input("Scoring model", key="llm_scoring_model")
+        st.text_input(
+            "Scoring model",
+            key="llm_scoring_model",
+            value=st.session_state.get("llm_scoring_model", DEFAULT_SCORING_MODEL),
+            disabled=True,
+        )
         st.text_area(
             "Scoring system prompt",
             key="llm_scoring_system_prompt",
-            height=220,
+            value=st.session_state.get("llm_scoring_system_prompt", DEFAULT_SCORING_SYSTEM_PROMPT),
+            height=270,
+            disabled=True,
         )
         st.caption(
             "Use {positive_keywords} and {negative_keywords} placeholders to inject the active English keyword lists."
