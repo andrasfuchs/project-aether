@@ -497,10 +497,250 @@ class EPOConnector:
                 output.append({"symbol": symbol})
         return output
 
+    def _extract_legal_status(self, root: ET.Element) -> Dict[str, Any]:
+        """
+        Extract INPADOC legal status events from OPS Family endpoint response.
+
+        Looks for ops:patent-family/ops:family-member/ops:legal elements and extracts:
+        - L008EP: Legal Event Code
+        - L019EP: Date first created
+
+        Args:
+            root: ElementTree root element from Family endpoint response
+
+        Returns:
+            Dictionary with patent_status and events list, ordered by date (descending - newest first)
+        """
+        events: List[Dict[str, Any]] = []
+        patent_status = "UNKNOWN"
+
+        # Find ops:patent-family element
+        patent_family = root.find(self._namespace_wild("patent-family"))
+        
+        if patent_family is not None:
+            # Look for family-member within patent-family
+            family_member = patent_family.find(self._namespace_wild("family-member"))
+            
+            if family_member is not None:
+                # Extract all legal elements from family-member
+                for legal_elem in family_member.findall(self._namespace_wild("legal")):
+                    event_code = ""
+                    event_date = ""
+                    
+                    # Extract L008EP (Legal Event Code)
+                    l008_elem = legal_elem.find(self._namespace_wild("L008EP"))
+                    if l008_elem is not None and l008_elem.text:
+                        event_code = l008_elem.text.strip().upper()
+                    
+                    # Extract L019EP (Date first created)
+                    l019_elem = legal_elem.find(self._namespace_wild("L019EP"))
+                    if l019_elem is not None and l019_elem.text:
+                        event_date = l019_elem.text.strip()
+                    
+                    # Only add if we have at least an event code
+                    if event_code:
+                        events.append({
+                            "event_code": event_code,
+                            "date": event_date,
+                            "description": "",
+                            "country": "EP",
+                        })
+        
+        # Sort events by date descending (most recent first)
+        try:
+            events.sort(key=lambda e: e.get("date", ""), reverse=True)
+        except Exception as sort_err:
+            logger.debug(f"Could not sort events by date: {sort_err}")
+        
+        # Infer patent status from the most recent event (first after descending sort)
+        if events:
+            latest_event = events[0]
+            event_code = latest_event.get("event_code", "").upper()
+            
+            if "REFUS" in event_code or "R" in event_code:
+                patent_status = "REFUSED"
+            elif "WITHDRAWN" in event_code or "WITHDRAWN" in latest_event.get("description", "").upper():
+                patent_status = "WITHDRAWN"
+            elif "LAPSED" in event_code or "LAPSED" in latest_event.get("description", "").upper():
+                patent_status = "LAPSED"
+            elif "EXPIRED" in event_code or "EXPIRED" in latest_event.get("description", "").upper():
+                patent_status = "EXPIRED"
+            elif "ACTIVE" in event_code or "GRANTED" in event_code:
+                patent_status = "ACTIVE"
+        
+        logger.debug(f"Extracted legal status: {patent_status}, events: {len(events)}")
+        return {
+            "patent_status": patent_status,
+            "events": events,
+        }
+
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((EPOAPIError, httpx.RequestError)),
+    )
+    async def _fetch_legal_status_from_family(
+        self,
+        epo_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Fetch INPADOC legal status from the Family endpoint.
+
+        Args:
+            epo_id: EPO document identifier (e.g., "EP1000000A1")
+
+        Returns:
+            Dictionary with legal_status (patent_status and events)
+
+        Raises:
+            EPOAPIError: If the request fails
+        """
+        try:
+            await self._check_rate_limit()
+            token = await self._get_access_token()
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/xml",
+            }
+
+            timeout = float(self.config.epo_request_timeout_seconds)
+            
+            # Try multiple endpoint variants to maximize chance of finding legal data
+            endpoint_variants = [
+                f"{self.base_url}/family/publication/docdb/{epo_id}/legal"
+            ]
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                for endpoint_url in endpoint_variants:
+                    logger.debug(f"Attempting to fetch legal status for {epo_id} from {endpoint_url}")
+                    
+                    response = await client.get(endpoint_url, headers=headers)
+
+                    if response.status_code == 401:
+                        refreshed = await self._get_access_token(force_refresh=True)
+                        headers["Authorization"] = f"Bearer {refreshed}"
+                        response = await client.get(endpoint_url, headers=headers)
+
+                    if response.status_code == 404:
+                        # Try next endpoint variant
+                        logger.debug(f"No data at endpoint: {endpoint_url}")
+                        continue
+
+                    if response.status_code == 429:
+                        raise EPORateLimitError("EPO OPS rate limit exceeded.")
+
+                    if response.status_code != 200:
+                        logger.debug(
+                            f"Failed to fetch from {endpoint_url} for {epo_id}: "
+                            f"status {response.status_code}"
+                        )
+                        continue
+
+                    # Successfully got a response, parse it
+                    try:
+                        root = ET.fromstring(response.text)
+                        legal_status = self._extract_legal_status(root)
+                        
+                        # Log if we found events
+                        if legal_status.get("events"):
+                            logger.info(f"✓ Found {len(legal_status['events'])} legal events for {epo_id}, status: {legal_status['patent_status']}")
+                        else:
+                            logger.debug(f"No legal events found in response for {epo_id}, status: {legal_status['patent_status']}")
+                        
+                        return legal_status
+                    except ET.ParseError as parse_err:
+                        logger.debug(f"Failed to parse Family XML for {epo_id}: {parse_err}")
+                        continue
+
+                # If we got here, none of the variants worked
+                logger.debug(f"No Family endpoint variant returned valid legal data for {epo_id}")
+                return {
+                    "patent_status": "UNKNOWN",
+                    "events": [],
+                }
+
+        except asyncio.TimeoutError:
+            logger.debug(f"Timeout fetching Family data for {epo_id}")
+            return {
+                "patent_status": "UNKNOWN",
+                "events": [],
+            }
+        except Exception as exc:
+            logger.debug(f"Exception fetching legal status for {epo_id}: {exc}")
+            return {
+                "patent_status": "UNKNOWN",
+                "events": [],
+            }
+
+    async def _fetch_legal_status_from_legal_service(
+        self,
+        epo_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fetch legal status from the OPS Legal service endpoint.
+
+        This is a fallback method that tries the /legal/ endpoint directly,
+        which may have better structured INPADOC legal data for some patents.
+
+        Args:
+            epo_id: EPO document identifier (e.g., "EP1000000A1")
+
+        Returns:
+            Dictionary with legal_status (patent_status and events), or empty if not found
+        """
+        try:
+            await self._check_rate_limit()
+            token = await self._get_access_token()
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/xml",
+            }
+
+            timeout = float(self.config.epo_request_timeout_seconds)
+            url = f"{self.base_url}/legal/publication/epodoc/{epo_id}"
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                logger.debug(f"Attempting Legal service endpoint for {epo_id}: {url}")
+                response = await client.get(url, headers=headers)
+
+                if response.status_code == 401:
+                    refreshed = await self._get_access_token(force_refresh=True)
+                    headers["Authorization"] = f"Bearer {refreshed}"
+                    response = await client.get(url, headers=headers)
+
+                if response.status_code in (404, 403):
+                    logger.debug(f"Legal service not available for {epo_id} (status {response.status_code})")
+                    return None  # Signal to try other methods
+
+                if response.status_code == 429:
+                    raise EPORateLimitError("EPO OPS rate limit exceeded.")
+
+                if response.status_code != 200:
+                    logger.debug(f"Legal service returned {response.status_code} for {epo_id}")
+                    return None
+
+                root = ET.fromstring(response.text)
+                legal_status = self._extract_legal_status(root)
+                
+                if legal_status.get("events"):
+                    logger.info(f"✓ Found legal events from Legal service for {epo_id}")
+                    return legal_status
+                return None
+
+        except (asyncio.TimeoutError, ET.ParseError) as exc:
+            logger.debug(f"Error fetching from Legal service for {epo_id}: {exc}")
+            return None
+        except Exception as exc:
+            logger.debug(f"Unexpected error in Legal service fetch for {epo_id}: {exc}")
+            return None
+
     def _normalize_exchange_document(
         self,
         doc: ET.Element,
         provider_record_url: Optional[str] = None,
+        legal_status: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Normalize an OPS `exchange-document` element into app record format.
@@ -508,6 +748,7 @@ class EPOConnector:
         Args:
             doc: XML element representing an exchange document.
             provider_record_url: Optional provider URL associated with the record.
+            legal_status: Optional legal status dict from Family endpoint enrichment.
 
         Returns:
             Normalized patent record dictionary.
@@ -535,10 +776,19 @@ class EPOConnector:
             )
 
         claims = []
-        legal_status = {
-            "patent_status": "UNKNOWN",
-            "events": [],
-        }
+        
+        # Use provided legal_status or default empty
+        if legal_status is None:
+            legal_status = {
+                "patent_status": "UNKNOWN",
+                "events": [],
+            }
+
+        # Build DOCDB format (CC.number.KC.date) for use in legal endpoint
+        docdb_id = f"{country}.{doc_number}.{kind}"
+        
+        # Build links to detailed legal history
+        legal_history_url = f"{self.base_url}/family/publication/docdb/{docdb_id}/legal"
 
         return {
             "record_id": record_id,
@@ -548,6 +798,7 @@ class EPOConnector:
             "provider_record_id": record_id,
             "provider_record_url": provider_record_url,
             "provider_api_url": provider_record_url,
+            "legal_history_url": legal_history_url,
             "jurisdiction": country,
             "doc_number": doc_number,
             "publication_reference": {
@@ -598,12 +849,69 @@ class EPOConnector:
                 break
         return self._normalize_exchange_document(doc, provider_record_url=provider_record_url)
 
+    async def enrich_records_with_legal_status(
+        self,
+        records: List[Dict[str, Any]],
+        max_concurrent: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """
+        Enrich a list of patent records with INPADOC legal status information.
+
+        Fetches legal status from the Family endpoint for each record and updates
+        the legal_status field. Uses semaphore to limit concurrent requests.
+
+        Args:
+            records: List of patent record dictionaries with epo_id field
+            max_concurrent: Maximum concurrent requests to EPO (default 5)
+
+        Returns:
+            List of enriched patent records with updated legal_status
+        """
+        if not records:
+            return records
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def enrich_one(record: Dict[str, Any]) -> Dict[str, Any]:
+            epo_id = record.get("epo_id")
+            if not epo_id:
+                return record
+
+            try:
+                async with semaphore:
+                    # Try Family endpoint first
+                    legal_status = await self._fetch_legal_status_from_family(epo_id)
+                    
+                    # If Family endpoint didn't return events, try Legal service
+                    if not legal_status.get("events"):
+                        legal_from_service = await self._fetch_legal_status_from_legal_service(epo_id)
+                        if legal_from_service is not None:
+                            legal_status = legal_from_service
+                    
+                    record = dict(record)  # Create a copy
+                    record["legal_status"] = legal_status
+                    return record
+            except Exception as exc:
+                logger.warning(f"Failed to enrich legal status for {epo_id}: {exc}")
+                return record
+
+        # Enrich all records concurrently
+        enriched = await asyncio.gather(
+            *[enrich_one(record) for record in records],
+            return_exceptions=False,
+        )
+        return enriched
+
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(5),
         retry=retry_if_exception_type(EPORateLimitError),
     )
-    async def search_patents(self, query_payload: Dict[str, Any]) -> Dict[str, Any]:
+    async def search_patents(
+        self,
+        query_payload: Dict[str, Any],
+        enrich_legal_status: bool = False,
+    ) -> Dict[str, Any]:
         """
         Execute an OPS search request and normalize returned records.
 
@@ -612,6 +920,9 @@ class EPOConnector:
                 - `cql`: OPS CQL query string.
                 - `limit`: Optional maximum records for the first range page.
                 - `offset`: Optional 1-based start index (default 1).
+            enrich_legal_status: If True, fetches INPADOC legal status from Family
+                endpoint for each record. This adds extra API calls but enriches
+                the legal_status field. Default False to preserve search speed.
 
         Returns:
             Dictionary with `data`, `total`, and provider metadata.
@@ -747,6 +1058,11 @@ class EPOConnector:
                         }
                     )
 
+                    # Optionally enrich records with legal status
+                    if enrich_legal_status and records:
+                        logger.debug(f"Enriching {len(records)} records with legal status from Family endpoint")
+                        records = await self.enrich_records_with_legal_status(records)
+
                     current_result = {
                         "data": records,
                         "total": len(records),
@@ -760,6 +1076,7 @@ class EPOConnector:
                         "response_excerpt": response.text[:800],
                         "provider": "epo",
                         "query": cql,
+                        "legal_status_enriched": enrich_legal_status,
                     }
 
                     if best_result is None:
@@ -971,7 +1288,7 @@ class EPOConnector:
                 "offset": 1,
             }
             try:
-                query_result = await self.search_patents(payload)
+                query_result = await self.search_patents(payload, enrich_legal_status=True)
             except EPOAPIError as exc:
                 strategy_attempts.append(
                     {

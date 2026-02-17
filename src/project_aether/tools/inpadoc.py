@@ -117,6 +117,26 @@ INPADOC_CODES = {
             "severity": StatusSeverity.LOW,
             "interpretation": "Administrative lapse.",
         },
+        "STAA": {
+            "description": "Information on the Status of an EP Patent Application or Granted EP Patent",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Status update notification. International publication made.",
+        },
+        "PUAI": {
+            "description": "Public Reference Made - EP Patent Entered European Phase",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Application entered European phase after public reference.",
+        },
+        "REG": {
+            "description": "Patent Registration",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Patent has been registered and is now active.",
+        },
+        "GRNT": {
+            "description": "Patent Granted",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Patent has been granted.",
+        },
     },
     
     # === POLAND (PL) ===
@@ -214,10 +234,13 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
     
     This is the core forensic function mentioned in implementation plan Section 10.2.
     
+    Analyzes a chronologically ordered chain of legal events to determine the
+    patent's current status and whether it experienced a substantive refusal.
+    
     Args:
-        patent_record: Patent data from Lens.org API, must contain:
+        patent_record: Patent data with:
                       - jurisdiction: str
-                      - legal_status: dict with events array
+                      - legal_status: dict with events array (sorted by date)
     
     Returns:
         StatusAnalysis object with detailed interpretation
@@ -305,18 +328,59 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
     # Get jurisdiction-specific code database
     jurisdiction_codes = INPADOC_CODES.get(jurisdiction, {})
     
-    # Analyze events in reverse chronological order (most recent first)
-    for event in reversed(events):
+    # Scan for significant events (refusals) first - these take precedence
+    # Events are sorted chronologically, so we can scan them
+    for event in events:
         event_code = event.get("event_code", "").upper()
+        event_date = event.get("date", "")
         event_description = event.get("description", "")
         
-        logger.debug(f"Analyzing event: {event_code} - {event_description}")
+        logger.debug(f"Analyzing event: {event_code} (date: {event_date}) - {event_description}")
         
         # Check if we have this code in our database
         if event_code in jurisdiction_codes:
             code_info = jurisdiction_codes[event_code]
             
-            # Update analysis based on code meaning
+            # For refusals, stop immediately - this is a high-priority finding
+            if code_info["severity"] == StatusSeverity.HIGH:
+                analysis.code_found = event_code
+                analysis.refusal_reason = code_info["description"]
+                analysis.severity = code_info["severity"]
+                analysis.interpretation = code_info["interpretation"]
+                analysis.is_refused = True
+                logger.info(
+                    f"🚨 HIGH PRIORITY: {jurisdiction} patent with code {event_code} at {event_date} "
+                    f"- {code_info['description']}"
+                )
+                return analysis
+    
+    # Check for common refusal patterns across any event code
+    for event in events:
+        event_code = event.get("event_code", "").upper()
+        event_description = event.get("description", "").upper()
+        
+        if "REFUS" in event_code or "REFUS" in event_description:
+            analysis.is_refused = True
+            analysis.severity = StatusSeverity.HIGH
+            analysis.code_found = event_code
+            analysis.refusal_reason = event.get("description") or "Refusal (unknown code)"
+            analysis.interpretation = f"⚠️ Refusal detected: {event_code}"
+            logger.info(f"🚨 Refusal found via code/description: {event_code}")
+            return analysis
+    
+    # If no refusal found, categorize based on most recent event
+    # (Events are sorted chronologically, so last is most recent)
+    if events:
+        latest_event = events[-1]
+        event_code = latest_event.get("event_code", "").upper()
+        event_date = latest_event.get("date", "")
+        event_description = latest_event.get("description", "").upper()
+        
+        logger.debug(f"Most recent event: {event_code} ({event_date})")
+        
+        # Check if we have this code in our database
+        if event_code in jurisdiction_codes:
+            code_info = jurisdiction_codes[event_code]
             analysis.code_found = event_code
             analysis.refusal_reason = code_info["description"]
             analysis.severity = code_info["severity"]
@@ -329,30 +393,41 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
                 analysis.is_withdrawn = True
             elif "lapsed" in code_info["description"].lower():
                 analysis.is_lapsed = True
-            
-            # For high-priority codes, we can stop searching
-            if code_info["severity"] == StatusSeverity.HIGH:
-                logger.info(
-                    f"🚨 HIGH PRIORITY: {jurisdiction} patent with code {event_code} "
-                    f"- {code_info['description']}"
-                )
-                break
+            elif "granted" in code_info["description"].lower():
+                analysis.is_active = True
         
         # Check for common patterns even if specific code not in database
-        elif "refus" in event_code.lower() or "refus" in event_description.lower():
-            analysis.is_refused = True
-            analysis.severity = StatusSeverity.HIGH
-            analysis.code_found = event_code
-            analysis.refusal_reason = event_description or "Refusal (unknown code)"
-            analysis.interpretation = f"⚠️ Refusal detected via code/description: {event_code}"
-            break
-        
-        elif "withdraw" in event_description.lower():
+        elif "WITHDRAW" in event_description:
             analysis.is_withdrawn = True
             analysis.severity = StatusSeverity.MEDIUM
             analysis.code_found = event_code
-            analysis.refusal_reason = event_description
+            analysis.refusal_reason = latest_event.get("description", "")
             analysis.interpretation = "Withdrawn by applicant."
+        elif "LAPSED" in event_description or "LAPSE" in event_description:
+            analysis.is_lapsed = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.code_found = event_code
+            analysis.refusal_reason = latest_event.get("description", "")
+            analysis.interpretation = "Patent lapsed - likely due to non-payment."
+        elif "EXPIRED" in event_description:
+            analysis.is_expired = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.code_found = event_code
+            analysis.refusal_reason = latest_event.get("description", "")
+            analysis.interpretation = "Patent expired after normal term."
+        elif "GRANTED" in event_description or "GRNT" in event_code:
+            analysis.is_active = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.code_found = event_code
+            analysis.refusal_reason = latest_event.get("description", "")
+            analysis.interpretation = "✓ Patent granted and currently active."
+        else:
+            # For status events like STAA, PUAI, treat as pending/active
+            analysis.is_pending = True
+            analysis.severity = StatusSeverity.LOW
+            analysis.code_found = event_code
+            analysis.refusal_reason = latest_event.get("description", "")
+            analysis.interpretation = f"Patent under prosecution or pending: {event_code}"
     
     return analysis
 
@@ -396,6 +471,10 @@ def batch_analyze_patents(patent_records: List[Dict]) -> List[StatusAnalysis]:
                     is_refused=False,
                     is_withdrawn=False,
                     is_lapsed=False,
+                    is_expired=False,
+                    is_inactive=False,
+                    is_active=False,
+                    is_pending=False,
                     severity=StatusSeverity.UNKNOWN,
                     refusal_reason=f"Analysis failed: {str(e)}",
                     code_found=None,

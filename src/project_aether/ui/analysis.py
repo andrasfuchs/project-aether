@@ -20,6 +20,7 @@ def render_deep_dive(assessment):
         color = "#F59E0B"
 
     provider_url = assessment.provider_record_url
+    legal_history_url = assessment.legal_history_url if hasattr(assessment, 'legal_history_url') else None
     
     # Get the original patent record to check for English translation
     patent_data = next(
@@ -49,11 +50,18 @@ def render_deep_dive(assessment):
         <p style="font-family: monospace; color: {color}; font-size: 1.2rem;">
             {assessment.record_id} | {assessment.jurisdiction} | {assessment.doc_number}
         </p>
-        {
-            f'<p style="margin-top: 10px;"><a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">🔗 View on Provider</a></p>'
-            if provider_url
-            else '<p style="margin-top: 10px; color: #94A3B8;">No provider link available.</p>'
-        }
+        <div style="margin-top: 10px; display: flex; gap: 15px;">
+            {
+                f'<a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">🔗 View on Provider</a>'
+                if provider_url
+                else '<span style="color: #94A3B8;">No provider link available.</span>'
+            }
+            {
+                f'<a href="{legal_history_url}" target="_blank" style="color: #10B981; text-decoration: none;">⚖️ Legal History</a>'
+                if legal_history_url
+                else ''
+            }
+        </div>
     </div>
     """,
         unsafe_allow_html=True,
