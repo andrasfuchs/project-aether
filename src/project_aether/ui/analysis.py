@@ -33,9 +33,13 @@ def render_deep_dive(assessment):
     english_title = patent_data.get("title_en")
     
     # Build title section: show English translation in brackets if it exists
-    title_html = f"<h2>{assessment.title}</h2>"
+    # Format title: capitalize first letter, rest lowercase (matching the results view)
+    formatted_title = assessment.title.capitalize() if assessment.title else ""
+    formatted_english_title = english_title.capitalize() if english_title else ""
+    
+    title_html = f"<h2>{formatted_title}</h2>"
     if english_title:
-        title_html += f"<p style=\"font-size: 0.95rem; color: #94A3B8; margin-top: -10px;\">({english_title})</p>"
+        title_html += f"<p style=\"font-size: 0.95rem; color: #94A3B8; margin-top: -10px;\">({formatted_english_title})</p>"
 
     st.markdown(
         f"""
@@ -220,6 +224,74 @@ def render_deep_dive(assessment):
             st.info("No abstract available")
 
     with col2:
+        # Legal Status section
+        if hasattr(assessment, "status_analysis") and assessment.status_analysis:
+            status = assessment.status_analysis
+            
+            # Determine info/warning/error styling based on severity
+            severity_color = "#94A3B8"
+            severity_emoji = "ℹ️"
+            if status.severity.value == "HIGH":
+                severity_color = "#EF4444"
+                severity_emoji = "🚨"
+            elif status.severity.value == "MEDIUM":
+                severity_color = "#F59E0B"
+                severity_emoji = "⚠️"
+            
+            st.markdown(
+                f"""
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <h4 style="margin: 0; color: {severity_color};">Legal Status</h4>
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+            
+            # Status flags
+            status_flags = []
+            if status.is_refused:
+                status_flags.append("🔴 Refused")
+            if status.is_withdrawn:
+                status_flags.append("⚠️ Withdrawn")
+            if status.is_lapsed:
+                status_flags.append("📉 Lapsed")
+            if status.is_expired:
+                status_flags.append("⏰ Expired")
+            if status.is_inactive:
+                status_flags.append("⏸️ Inactive")
+            if status.is_active:
+                status_flags.append("✅ Active")
+            if status.is_pending:
+                status_flags.append("⏳ Pending")
+            
+            if status_flags:
+                st.markdown(f"**Status:** {' • '.join(status_flags)}")
+            
+            # Jurisdiction and severity
+            st.markdown(f"**Jurisdiction:** {status.jurisdiction}")
+            st.markdown(f"**Severity:** {status.severity.value}")
+            
+            # Code found
+            if status.code_found:
+                st.markdown(f"**Event Code:** `{status.code_found}`")
+            
+            # Refusal reason
+            if status.refusal_reason and status.refusal_reason != "Unknown":
+                st.markdown(f"**Reason:** {status.refusal_reason}")
+            
+            # Interpretation with colored background
+            if status.interpretation and status.interpretation != "No legal status events found.":
+                st.markdown(
+                    f"""
+                <div style="background-color: rgba({127 if status.severity.value == 'MEDIUM' else (239 if status.severity.value == 'HIGH' else 148)}, {163 if status.severity.value == 'MEDIUM' else (68 if status.severity.value == 'HIGH' else 163)}, {184 if status.severity.value == 'MEDIUM' else (68 if status.severity.value == 'HIGH' else 184)}, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid {severity_color}; margin-top: 10px;">
+                    <small>{status.interpretation}</small>
+                </div>
+                """,
+                    unsafe_allow_html=True,
+                )
+        
+        st.divider()
+        
         # Relevance section with tooltip
         st.markdown(
             """
@@ -290,8 +362,11 @@ def render_deep_dive_tab(assessments):
     # Check if a specific record ID was selected from the results tab
     selected_record_id_from_results = st.session_state.get("selected_record_id_for_analysis")
 
+    # Sort assessments by relevance_score descending, matching the order in search results tab
+    sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
+    
     # Determine which record ID to display
-    available_record_ids = [a.record_id for a in assessments]
+    available_record_ids = [a.record_id for a in sorted_assessments]
 
     # If a record ID was set from results tab selection, use it; otherwise use the first one
     if selected_record_id_from_results and selected_record_id_from_results in available_record_ids:
@@ -306,7 +381,7 @@ def render_deep_dive_tab(assessments):
         "Select Patent",
         options=available_record_ids,
         index=default_index,
-        format_func=lambda x: f"{x} - {next((a.title for a in assessments if a.record_id == x), 'Unknown')}",
+        format_func=lambda x: f"{x} - {next((a.title.capitalize() if a.title else 'Unknown' for a in sorted_assessments if a.record_id == x), 'Unknown')}",
         label_visibility="collapsed",
     )
 
