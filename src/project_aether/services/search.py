@@ -520,6 +520,10 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
 
             except Exception as exc:
                 logger.error(f"Failed to analyze patent: {exc}")
+                # Check if it's a quota error
+                from project_aether.agents.analyst import QuotaExhaustedError
+                if isinstance(exc, QuotaExhaustedError):
+                    raise
 
         render_dashboard(
             dashboard_container,
@@ -545,5 +549,17 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
     except ImportError as exc:
         st.error(f"System Error: Dependency missing ({exc}). Run `uv sync`.")
     except Exception as exc:
-        st.error(f"Analysis failed: {exc}")
+        # Check if it's a quota error and display user-friendly message
+        from project_aether.agents.analyst import QuotaExhaustedError
+        if isinstance(exc, QuotaExhaustedError):
+            st.error(
+                "⚠️ **API Quota Exceeded**\n\n"
+                "The Gemini API daily quota has been exhausted. This typically means you've hit the free tier limit.\n\n"
+                "**What you can do:**\n"
+                "- Wait until tomorrow when the quota resets\n"
+                "- Upgrade your Gemini API plan at https://ai.google.dev/gemini-api/docs/rate-limits\n"
+                "- Check your current usage at https://ai.dev/rate-limit"
+            )
+        else:
+            st.error(f"Analysis failed: {exc}")
         logger.error(f"Analysis failed: {exc}", exc_info=True)

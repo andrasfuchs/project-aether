@@ -35,6 +35,11 @@ from project_aether.core.scoring_cache import (
 logger = logging.getLogger("AnalystAgent")
 
 
+class QuotaExhaustedError(Exception):
+    """Raised when API quota is exhausted."""
+    pass
+
+
 def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
     """
     Safely extract nested field from dictionary using dot notation.
@@ -381,18 +386,31 @@ class AnalystAgent:
         )
 
         client = genai.Client(api_key=self.config.google_api_key)
-        response = client.models.generate_content(
-            model=self.scoring_model,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.2,
-                response_mime_type="application/json",
-                thinking_config=types.ThinkingConfig(
-                    thinking_level=types.ThinkingLevel.LOW
+        
+        try:
+            response = client.models.generate_content(
+                model=self.scoring_model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level=types.ThinkingLevel.LOW
+                    ),
                 ),
-            ),
-        )
+            )
+        except Exception as e:
+            error_msg = str(e)
+            # Check for quota exhaustion (429 error)
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
+                logger.error(f"Gemini API quota exhausted: {error_msg}")
+                raise QuotaExhaustedError(
+                    "Gemini API quota exceeded. Please check your plan and billing details at "
+                    "https://ai.google.dev/gemini-api/docs/rate-limits or try again later."
+                ) from e
+            # Re-raise other errors
+            raise
 
         parsed = self._parse_llm_json(response.text or "{}")
         score = float(parsed.get("score", 0.0))
@@ -592,6 +610,9 @@ class AnalystAgent:
                         f"🎯 HIGH VALUE TARGET: {assessment.record_id} "
                         f"({assessment.jurisdiction}) - {assessment.summary}"
                     )
+            except QuotaExhaustedError:
+                # Re-raise quota errors to stop processing and inform user
+                raise
             except Exception as e:
                 logger.error(f"Failed to analyze patent: {e}")
         

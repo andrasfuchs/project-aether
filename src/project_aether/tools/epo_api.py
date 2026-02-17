@@ -497,6 +497,71 @@ class EPOConnector:
                 output.append({"symbol": symbol})
         return output
 
+    def _extract_simple_legal_status(self, root: ET.Element) -> Dict[str, Any]:
+        """
+        Extract simple legal status from bibliographic-data/application-reference.
+
+        Looks for application-reference with document-id type="docdb" and extracts:
+        - country: Country code
+        - doc-number: Document number
+        - kind: Kind code (A/A1 typically means approved/published)
+        - date: Application date
+
+        Args:
+            root: ElementTree root element (exchange-document)
+
+        Returns:
+            Dictionary with patent_status inferred from kind code and application details
+        """
+        patent_status = "UNKNOWN"
+        application_info: Dict[str, str] = {}
+
+        # Find bibliographic-data/application-reference
+        biblio_data = root.find(self._namespace_wild("bibliographic-data"))
+        if biblio_data is not None:
+            app_ref = biblio_data.find(self._namespace_wild("application-reference"))
+            if app_ref is not None:
+                # Look for document-id with type="docdb"
+                for doc_id in app_ref.findall(self._namespace_wild("document-id")):
+                    if doc_id.attrib.get("document-id-type") == "docdb":
+                        country = self._first_text(doc_id, "country")
+                        doc_number = self._first_text(doc_id, "doc-number")
+                        kind = self._first_text(doc_id, "kind")
+                        date = self._first_text(doc_id, "date")
+
+                        if country:
+                            application_info["country"] = country
+                        if doc_number:
+                            application_info["doc_number"] = doc_number
+                        if kind:
+                            application_info["kind"] = kind
+                            # Infer status from kind code
+                            # A, A1, A2, A3 typically mean published application (approved for publication)
+                            kind_upper = kind.upper()
+                            if kind_upper in ("A", "A1", "A2", "A3"):
+                                patent_status = "PUBLISHED? (A)"
+                            elif kind_upper in ("F", "F1", "F2", "F3"):
+                                patent_status = "? (F)"
+                            elif kind_upper in ("T", "T1", "T2", "T3"):
+                                patent_status = "GRANTED? (T)"
+                            elif kind_upper in ("W", "W1", "W2"):
+                                patent_status = "WITHDRAWN? (W)"
+                        if date:
+                            # Normalize date format (YYYYMMDD -> YYYY-MM-DD)
+                            if len(date) == 8 and date.isdigit():
+                                date = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
+                            application_info["date"] = date
+                        
+                        # We found the docdb entry, no need to continue
+                        break
+
+        logger.debug(f"Extracted simple legal status: {patent_status}, application_info: {application_info}")
+        return {
+            "patent_status": patent_status,
+            "application_info": application_info,
+            "events": [],
+        }
+
     def _extract_legal_status(self, root: ET.Element) -> Dict[str, Any]:
         """
         Extract INPADOC legal status events from OPS Family endpoint response.
@@ -741,6 +806,7 @@ class EPOConnector:
         doc: ET.Element,
         provider_record_url: Optional[str] = None,
         legal_status: Optional[Dict[str, Any]] = None,
+        use_simple_legal_status: bool = True,
     ) -> Dict[str, Any]:
         """
         Normalize an OPS `exchange-document` element into app record format.
@@ -749,6 +815,7 @@ class EPOConnector:
             doc: XML element representing an exchange document.
             provider_record_url: Optional provider URL associated with the record.
             legal_status: Optional legal status dict from Family endpoint enrichment.
+            use_simple_legal_status: If True, extract simple legal status from bibliographic-data.
 
         Returns:
             Normalized patent record dictionary.
@@ -777,12 +844,15 @@ class EPOConnector:
 
         claims = []
         
-        # Use provided legal_status or default empty
+        # Use provided legal_status or extract from search result
         if legal_status is None:
-            legal_status = {
-                "patent_status": "UNKNOWN",
-                "events": [],
-            }
+            if use_simple_legal_status:
+                legal_status = self._extract_simple_legal_status(doc)
+            else:
+                legal_status = {
+                    "patent_status": "UNKNOWN",
+                    "events": [],
+                }
 
         # Build DOCDB format (CC.number.KC.date) for use in legal endpoint
         docdb_id = f"{country}.{doc_number}.{kind}"
@@ -825,7 +895,7 @@ class EPOConnector:
             "date_published": published_date,
         }
 
-    def _normalize_entry(self, entry: ET.Element) -> Dict[str, Any]:
+    def _normalize_entry(self, entry: ET.Element, use_simple_legal_status: bool = True) -> Dict[str, Any]:
         """
         Normalize one OPS `entry` into the app's patent record contract.
 
@@ -847,7 +917,7 @@ class EPOConnector:
             if href:
                 provider_record_url = href
                 break
-        return self._normalize_exchange_document(doc, provider_record_url=provider_record_url)
+        return self._normalize_exchange_document(doc, provider_record_url=provider_record_url, use_simple_legal_status=use_simple_legal_status)
 
     async def enrich_records_with_legal_status(
         self,
@@ -894,8 +964,8 @@ class EPOConnector:
             except Exception as exc:
                 logger.warning(f"Failed to enrich legal status for {epo_id}: {exc}")
                 return record
-
-        # Enrich all records concurrently
+            
+        #Enrich all records concurrently
         enriched = await asyncio.gather(
             *[enrich_one(record) for record in records],
             return_exceptions=False,
@@ -911,6 +981,7 @@ class EPOConnector:
         self,
         query_payload: Dict[str, Any],
         enrich_legal_status: bool = False,
+        use_simple_legal_status: bool = True,
     ) -> Dict[str, Any]:
         """
         Execute an OPS search request and normalize returned records.
@@ -922,7 +993,10 @@ class EPOConnector:
                 - `offset`: Optional 1-based start index (default 1).
             enrich_legal_status: If True, fetches INPADOC legal status from Family
                 endpoint for each record. This adds extra API calls but enriches
-                the legal_status field. Default False to preserve search speed.
+                the legal_status field with detailed legal events. Default False.
+            use_simple_legal_status: If True, extracts simple legal status from
+                bibliographic-data in search results. Default True. This is fast
+                and doesn't require additional API calls.
 
         Returns:
             Dictionary with `data`, `total`, and provider metadata.
@@ -1039,11 +1113,11 @@ class EPOConnector:
                                 total_available = int(str(attr_val))
                                 break
 
-                    records = [self._normalize_entry(entry) for entry in entries]
+                    records = [self._normalize_entry(entry, use_simple_legal_status=use_simple_legal_status) for entry in entries]
                     records = [r for r in records if r]
 
                     if not records and docs:
-                        records = [self._normalize_exchange_document(doc) for doc in docs]
+                        records = [self._normalize_exchange_document(doc, use_simple_legal_status=use_simple_legal_status) for doc in docs]
                         records = [r for r in records if r]
 
                     endpoint_attempts.append(
@@ -1288,7 +1362,7 @@ class EPOConnector:
                 "offset": 1,
             }
             try:
-                query_result = await self.search_patents(payload, enrich_legal_status=True)
+                query_result = await self.search_patents(payload, enrich_legal_status=False)
             except EPOAPIError as exc:
                 strategy_attempts.append(
                     {
