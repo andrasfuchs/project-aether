@@ -6,6 +6,7 @@ Main Streamlit application entry point.
 import streamlit as st
 import logging
 import copy
+from project_aether.core.log_stream import install_log_stream_handler
 from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.core.keyword_translation import (
     load_keyword_cache,
@@ -18,6 +19,7 @@ from project_aether.core.llm_scoring import (
 from project_aether.services.search import run_patent_search
 from project_aether.ui.dashboard import render_dashboard_metrics, show_placeholder_dashboard
 from project_aether.ui.analysis import render_deep_dive_tab
+from project_aether.ui.logs import render_live_logs_tab
 from project_aether.ui.results import render_results_tab
 from project_aether.ui.sidebar import render_sidebar
 from project_aether.ui.styles import inject_global_styles
@@ -34,6 +36,9 @@ logging.basicConfig(
 )
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger("ProjectAether")
+
+# Capture all in-process logs into an in-memory stream for the Live Logs tab
+install_log_stream_handler(max_entries=10000, level=logging.DEBUG)
 
 # Explicitly set provider connector loggers to DEBUG
 logging.getLogger("LensConnector").setLevel(logging.DEBUG)
@@ -165,11 +170,12 @@ def main():
     config, selected_language_codes, selected_language_names, start_date, end_date, run_mission = render_sidebar(LANGUAGE_MAP)
 
     # --- MAIN CONTENT TABS ---
-    tab_dashboard, tab_results, tab_analysis, tab_settings = st.tabs([
+    tab_dashboard, tab_results, tab_analysis, tab_settings, tab_live_logs = st.tabs([
         "Dashboard",
         "Search Results",
         "Detailed Analysis",
-        "Settings"
+        "Settings",
+        "Logs"
     ])
     
     # --- DASHBOARD TAB ---
@@ -209,6 +215,10 @@ def main():
     # --- ANALYSIS TAB ---
     with tab_analysis:
         render_deep_dive_tab(st.session_state.get("assessments"))
+
+    # --- LOGS TAB ---
+    with tab_live_logs:
+        render_live_logs_tab()
 
     # --- SETTINGS TAB ---
     with tab_settings:
