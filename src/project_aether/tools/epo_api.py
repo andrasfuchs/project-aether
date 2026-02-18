@@ -20,7 +20,7 @@ import logging
 import re
 import unicodedata
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -1302,6 +1302,7 @@ class EPOConnector:
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
         limit: Optional[int] = 100,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Search patents using OPS with compatibility-oriented method signature.
@@ -1315,6 +1316,8 @@ class EPOConnector:
             patent_status_filter: Reserved for future legal endpoint integration.
             language: Reserved for compatibility.
             limit: Max records requested.
+            progress_callback: Optional callback invoked after each per-keyword
+                API call completes. Receives a dictionary with progress details.
 
         Returns:
             Search results dictionary with normalized records.
@@ -1343,7 +1346,8 @@ class EPOConnector:
         included_by_id: Dict[str, Dict[str, Any]] = {}
         endpoint_used_values: List[str] = []
 
-        for keyword in positive_keywords:
+        total_keywords = len(positive_keywords)
+        for index, keyword in enumerate(positive_keywords, start=1):
             cql = self._build_ops_cql(
                 jurisdictions=jurisdictions,
                 start_date=start_date,
@@ -1372,6 +1376,17 @@ class EPOConnector:
                         "error": str(exc),
                     }
                 )
+                if progress_callback:
+                    progress_callback(
+                        {
+                            "completed": index,
+                            "total": total_keywords,
+                            "keyword": keyword,
+                            "success": False,
+                            "error": str(exc),
+                            "provider": "epo",
+                        }
+                    )
                 raise EPOAPIError(
                     "EPO strict keyword search aborted: failed query for include "
                     f"keyword='{keyword}' with full exclude keyword set. No fallback was applied. "
@@ -1393,6 +1408,18 @@ class EPOConnector:
                     "total_available": query_result.get("total_available"),
                 }
             )
+
+            if progress_callback:
+                progress_callback(
+                    {
+                        "completed": index,
+                        "total": total_keywords,
+                        "keyword": keyword,
+                        "success": True,
+                        "provider": "epo",
+                        "normalized_count": query_result.get("normalized_count"),
+                    }
+                )
 
             for record in query_result.get("data", []):
                 record_id = record.get("record_id")

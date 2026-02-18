@@ -6,7 +6,7 @@ Follows the implementation plan from Section 10.1.
 
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 from datetime import datetime, timedelta
 
 import httpx
@@ -347,6 +347,7 @@ class LensConnector:
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
         limit: Optional[int] = 100,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict:
         """
         Convenience method to search with specified language and no jurisdiction filter.
@@ -360,11 +361,14 @@ class LensConnector:
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR")
             limit: Maximum number of results to return per search (default: 100)
+            progress_callback: Optional progress callback for provider-interface
+                compatibility; not used by Lens connector.
             
         Returns:
             Search results from Lens.org with metadata about filtering
         """
         jurisdictions = [jurisdiction] if jurisdiction else None
+        _ = progress_callback
         
         # Build the query with language parameter
 

@@ -76,6 +76,11 @@ def translate_patents_to_english(patents, language_name, api_key, translation_ca
                 translation_cache
             )
             translated_patents.append(translated_patent)
+
+            try:
+                save_translation_cache(translation_cache)
+            except Exception as save_exc:
+                logger.warning(f"Failed to persist translation cache after patent translation step: {save_exc}")
             
             # Update progress during translation if dashboard container provided
             if dashboard_container is not None:
@@ -83,7 +88,7 @@ def translate_patents_to_english(patents, language_name, api_key, translation_ca
                 render_dashboard(
                     dashboard_container,
                     _build_dashboard_snapshot(0, 0, 0, 0),
-                    f"Translating {i + 1}/{len(patents)} {language_name} patents to English...",
+                    f"Translated {i + 1}/{len(patents)} {language_name} patents (cache saved)",
                     progress_percent,
                 )
             
@@ -333,6 +338,32 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     language=query_kwargs["language"],
                     limit=query_kwargs["limit"],
                 )
+
+                keyword_progress = {
+                    "completed": 0,
+                    "total": max(1, len(final_include_terms)),
+                }
+
+                def _on_keyword_search_progress(event):
+                    keyword_progress["completed"] = int(event.get("completed", keyword_progress["completed"]))
+                    keyword_progress["total"] = max(1, int(event.get("total", keyword_progress["total"])))
+                    keyword = str(event.get("keyword", ""))
+                    keyword_short = f"{keyword[:32]}..." if len(keyword) > 35 else keyword
+                    progress_within_language = keyword_progress["completed"] / keyword_progress["total"]
+                    progress_percent = int(
+                        (10 + (lang_idx * (25 / len(language_codes))))
+                        + (progress_within_language * (10 / len(language_codes)))
+                    )
+                    render_dashboard(
+                        dashboard_container,
+                        _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                        (
+                            f"Searching {language_name}: keyword "
+                            f"{keyword_progress['completed']}/{keyword_progress['total']}"
+                            + (f" ({keyword_short})" if keyword_short else "")
+                        ),
+                        progress_percent,
+                    )
                 
                 if cached_result is not None:
                     logger.info(f"Using cached search results for {language_name}")
@@ -342,7 +373,12 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 else:
                     # Cache miss - perform actual search
                     try:
-                        result = asyncio.run(primary_connector.search_by_jurisdiction(**query_kwargs))
+                        result = asyncio.run(
+                            primary_connector.search_by_jurisdiction(
+                                **query_kwargs,
+                                progress_callback=_on_keyword_search_progress,
+                            )
+                        )
                         provider_used = selected_provider
                         fallback_reason = None
                     except Exception as primary_exc:
@@ -353,7 +389,12 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                             primary_exc,
                         )
                         try:
-                            result = asyncio.run(fallback_connector.search_by_jurisdiction(**query_kwargs))
+                            result = asyncio.run(
+                                fallback_connector.search_by_jurisdiction(
+                                    **query_kwargs,
+                                    progress_callback=_on_keyword_search_progress,
+                                )
+                            )
                             provider_used = "lens"
                             fallback_reason = str(primary_exc)
                         except Exception as fallback_exc:
@@ -380,9 +421,20 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         limit=query_kwargs["limit"],
                         results=result,
                     )
-                    # Save cache after adding new entry
+
+                # Save cache after each successful term search
+                try:
                     save_search_cache(search_cache)
-                    logger.info(f"Cached search results for {language_name}")
+                    logger.info(f"Persisted search cache after successful search for {language_name}")
+                except Exception as save_exc:
+                    logger.warning(f"Failed to persist search cache after {language_name} search: {save_exc}")
+
+                render_dashboard(
+                    dashboard_container,
+                    _build_dashboard_snapshot(len(all_results), 0, 0, 0),
+                    f"Search complete for {language_name} ({len(result.get('data', []))} results, cache saved)",
+                    20 + ((lang_idx + 1) * (25 / len(language_codes))),
+                )
 
                 patents = result.get("data", [])
 
@@ -448,8 +500,6 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         lang_idx=lang_idx,
                         num_languages=len(language_codes),
                     )
-                    # Save updated translation cache
-                    save_translation_cache(translation_cache)
                     # Update progress after successful patent translation
                     render_dashboard(
                         dashboard_container,
@@ -501,22 +551,20 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 else:
                     low_count += 1
 
-                # Update dashboard every patent (or every N patents for performance)
-                if (i + 1) % max(1, len(all_results) // 10) == 0 or (i + 1) == len(all_results):
-                    # Update status using dashboard renderer
-                    percent_done = int(50 + ((i + 1) / len(all_results)) * 45)
-                    render_dashboard(
-                        dashboard_container,
-                        _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
-                        f"Analyzing ({i + 1}/{len(all_results)})",
-                        percent_done,
-                    )
+                # Update status using dashboard renderer after each successful step
+                percent_done = int(50 + ((i + 1) / len(all_results)) * 45)
+                render_dashboard(
+                    dashboard_container,
+                    _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
+                    f"Analyzing ({i + 1}/{len(all_results)}) • scoring step complete",
+                    percent_done,
+                )
 
-                    if assessment.intelligence_value == "HIGH":
-                        logger.info(
-                            f"HIGH VALUE TARGET: {assessment.record_id} "
-                            f"({assessment.jurisdiction}) - {assessment.summary}"
-                        )
+                if assessment.intelligence_value == "HIGH":
+                    logger.info(
+                        f"HIGH VALUE TARGET: {assessment.record_id} "
+                        f"({assessment.jurisdiction}) - {assessment.summary}"
+                    )
 
             except Exception as exc:
                 logger.error(f"Failed to analyze patent: {exc}")
