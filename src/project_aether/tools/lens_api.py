@@ -18,7 +18,6 @@ from tenacity import (
 )
 
 from project_aether.core.config import get_config
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 # Configure Logging
 logger = logging.getLogger("LensConnector")
@@ -237,13 +236,17 @@ class LensConnector:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
         if positive_keywords is None:
-            positive_keywords = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+            positive_keywords = []
         if negative_keywords is None:
-            negative_keywords = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+            negative_keywords = []
 
         # Clean up empty strings
         positive_keywords = [term for term in positive_keywords if term]
         negative_keywords = [term for term in negative_keywords if term]
+        if not positive_keywords:
+            raise LensAPIError(
+                "Lens keyword search requires at least one include keyword from the active sidebar keyword set."
+            )
 
         must_clauses = []
         

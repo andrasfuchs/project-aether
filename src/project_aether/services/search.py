@@ -15,10 +15,8 @@ from project_aether.core.keyword_translation import (
     ensure_keyword_set,
     save_keyword_cache,
     set_cached_translation,
-    default_translation_for_language,
     translate_keywords_with_llm,
 )
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.core.llm_scoring import (
     DEFAULT_SCORING_MODEL,
     DEFAULT_SCORING_SYSTEM_PROMPT,
@@ -194,9 +192,16 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         selected_provider = "epo"
         primary_connector = EPOConnector()
         fallback_connector = LensConnector()
-        keyword_config = st.session_state.get("keyword_config", DEFAULT_KEYWORDS)
+        keyword_config = st.session_state.get("keyword_config")
+        if not keyword_config:
+            st.error("No active keyword set found. Set Include/Exclude terms in the sidebar before searching.")
+            return
+
         cache = st.session_state.get("keyword_cache", load_keyword_cache())
         include_terms, exclude_terms = get_active_english_keywords(keyword_config)
+        if not include_terms:
+            st.error("At least one include keyword is required. Update the active keyword set in the sidebar.")
+            return
         ensure_keyword_set(cache, include_terms, exclude_terms)
         save_keyword_cache(cache)
         st.session_state["keyword_cache"] = cache
@@ -292,23 +297,9 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         except Exception as exc:
                             logger.warning(f"LLM translation failed for {language_name}: {exc}")
                     
-                    # Fall back to default translations if LLM failed or unavailable
+                    # Fall back to English terms if translation is unavailable
                     if not translation_successful:
-                        fallback = default_translation_for_language(language_name)
-                        if fallback:
-                            final_include_terms, final_exclude_terms = fallback
-                            # Save the default translation to cache
-                            set_cached_translation(
-                                cache,
-                                set_id=set_id,
-                                language=language_name,
-                                include_terms=final_include_terms,
-                                exclude_terms=final_exclude_terms,
-                                source="default",
-                            )
-                            logger.info(f"Using default translations for {language_name}")
-                        else:
-                            logger.warning(f"No translation available for {language_name}, using English terms")
+                        logger.warning(f"No translation available for {language_name}, using English terms")
                     
                     # Save updated cache
                     save_keyword_cache(cache)
@@ -316,27 +307,25 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
 
             try:
                 # No jurisdiction filtering - search all with specified language
-                query_kwargs = dict(
-                    jurisdiction=None,
-                    start_date=start_date.strftime("%Y-%m-%d") if start_date else None,
-                    end_date=end_date.strftime("%Y-%m-%d"),
-                    positive_keywords=final_include_terms,
-                    negative_keywords=final_exclude_terms,
-                    language=language_code,
-                    limit=limit,
-                )
+                jurisdiction = None
+                query_start_date = start_date.strftime("%Y-%m-%d") if start_date else None
+                query_end_date = end_date.strftime("%Y-%m-%d")
+                query_positive_keywords = final_include_terms
+                query_negative_keywords = final_exclude_terms
+                query_language = language_code
+                query_limit = limit
 
                 # Check cache before making API call
                 cached_result = get_cached_search_results(
                     cache=search_cache,
-                    jurisdiction=query_kwargs["jurisdiction"],
-                    start_date=query_kwargs["start_date"],
-                    end_date=query_kwargs["end_date"],
-                    positive_keywords=query_kwargs["positive_keywords"],
-                    negative_keywords=query_kwargs["negative_keywords"],
+                    jurisdiction=jurisdiction,
+                    start_date=query_start_date,
+                    end_date=query_end_date,
+                    positive_keywords=query_positive_keywords,
+                    negative_keywords=query_negative_keywords,
                     patent_status_filter=None,
-                    language=query_kwargs["language"],
-                    limit=query_kwargs["limit"],
+                    language=query_language,
+                    limit=query_limit,
                 )
 
                 keyword_progress = {
@@ -375,7 +364,13 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     try:
                         result = asyncio.run(
                             primary_connector.search_by_jurisdiction(
-                                **query_kwargs,
+                                jurisdiction=jurisdiction,
+                                start_date=query_start_date,
+                                end_date=query_end_date,
+                                positive_keywords=query_positive_keywords,
+                                negative_keywords=query_negative_keywords,
+                                language=query_language,
+                                limit=query_limit,
                                 progress_callback=_on_keyword_search_progress,
                             )
                         )
@@ -391,7 +386,13 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                         try:
                             result = asyncio.run(
                                 fallback_connector.search_by_jurisdiction(
-                                    **query_kwargs,
+                                    jurisdiction=jurisdiction,
+                                    start_date=query_start_date,
+                                    end_date=query_end_date,
+                                    positive_keywords=query_positive_keywords,
+                                    negative_keywords=query_negative_keywords,
+                                    language=query_language,
+                                    limit=query_limit,
                                     progress_callback=_on_keyword_search_progress,
                                 )
                             )
@@ -411,14 +412,14 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     # Cache the successful result
                     set_cached_search_results(
                         cache=search_cache,
-                        jurisdiction=query_kwargs["jurisdiction"],
-                        start_date=query_kwargs["start_date"],
-                        end_date=query_kwargs["end_date"],
-                        positive_keywords=query_kwargs["positive_keywords"],
-                        negative_keywords=query_kwargs["negative_keywords"],
+                        jurisdiction=jurisdiction,
+                        start_date=query_start_date,
+                        end_date=query_end_date,
+                        positive_keywords=query_positive_keywords,
+                        negative_keywords=query_negative_keywords,
                         patent_status_filter=None,
-                        language=query_kwargs["language"],
-                        limit=query_kwargs["limit"],
+                        language=query_language,
+                        limit=query_limit,
                         results=result,
                     )
 
@@ -556,7 +557,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 render_dashboard(
                     dashboard_container,
                     _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
-                    f"Analyzing ({i + 1}/{len(all_results)}) • scoring step complete",
+                    f"Analyzing ({i + 1}/{len(all_results)})",
                     percent_done,
                 )
 

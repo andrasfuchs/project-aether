@@ -27,7 +27,6 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from project_aether.core.config import get_config
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 logger = logging.getLogger("EPOConnector")
 
@@ -1210,12 +1209,16 @@ class EPOConnector:
             end_date = datetime.now().strftime("%Y-%m-%d")
 
         if positive_keywords is None:
-            positive_keywords = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+            positive_keywords = []
         if negative_keywords is None:
-            negative_keywords = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+            negative_keywords = []
 
         positive_keywords = [term for term in positive_keywords if term]
         negative_keywords = [term for term in negative_keywords if term]
+        if not positive_keywords:
+            raise EPOAPIError(
+                "EPO keyword search requires at least one include keyword from the active sidebar keyword set."
+            )
 
         cql = self._build_ops_cql(
             jurisdictions=jurisdictions,
@@ -1330,9 +1333,9 @@ class EPOConnector:
             end_date = datetime.now().strftime("%Y-%m-%d")
 
         if positive_keywords is None:
-            positive_keywords = DEFAULT_KEYWORDS.get("English", {}).get("positive", [])
+            positive_keywords = []
         if negative_keywords is None:
-            negative_keywords = DEFAULT_KEYWORDS.get("English", {}).get("negative", [])
+            negative_keywords = []
 
         positive_keywords = self._normalize_keyword_list(positive_keywords)
         negative_keywords = self._normalize_keyword_list(negative_keywords)

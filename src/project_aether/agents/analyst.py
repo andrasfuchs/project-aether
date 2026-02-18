@@ -19,7 +19,7 @@ from project_aether.tools.inpadoc import (
     StatusSeverity,
 )
 from project_aether.core.config import get_config
-from project_aether.core.keywords import DEFAULT_KEYWORDS, get_flattened_keywords
+from project_aether.core.keywords import get_flattened_keywords
 from project_aether.core.llm_scoring import (
     DEFAULT_SCORING_MODEL,
     DEFAULT_SCORING_SYSTEM_PROMPT,
@@ -128,7 +128,7 @@ class AnalystAgent:
           flattens this structure into two lists via `get_flattened_keywords()`:
           - `anomalous_keywords`: terms indicating anomalous phenomena
           - `false_positive_keywords`: terms indicating conventional technology
-          If omitted, `DEFAULT_KEYWORDS` are used.
+        If omitted, empty keyword lists are used.
 
      Working Methods (Pipeline)
      --------------------------
@@ -178,11 +178,9 @@ class AnalystAgent:
         self.scoring_system_prompt = scoring_system_prompt or DEFAULT_SCORING_SYSTEM_PROMPT
         self.scoring_model = scoring_model or DEFAULT_SCORING_MODEL
         self.scoring_cache = load_scoring_cache()
-        
-        if keyword_config:
-            self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(keyword_config)
-        else:
-            self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(DEFAULT_KEYWORDS)
+
+        active_keyword_config = keyword_config or {"English": {"positive": [], "negative": []}}
+        self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(active_keyword_config)
         
         # High-value IPC/CPC classifications
         self.high_value_classifications = {

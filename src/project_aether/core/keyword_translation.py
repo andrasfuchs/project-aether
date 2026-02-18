@@ -15,7 +15,6 @@ from google import genai
 from google.genai import types
 
 from project_aether.core.config import get_config
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 
 
 CACHE_VERSION = 1
@@ -164,13 +163,8 @@ def set_cached_translation(
 def default_translation_for_language(
     language: str,
 ) -> Optional[Tuple[List[str], List[str]]]:
-    block = DEFAULT_KEYWORDS.get(language)
-    if not block:
-        return None
-    return (
-        normalize_terms(block.get("positive", [])),
-        normalize_terms(block.get("negative", [])),
-    )
+    _ = language
+    return None
 
 
 def translate_keywords_with_llm(

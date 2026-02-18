@@ -12,7 +12,6 @@ from project_aether.core.keyword_translation import (
     get_history_entries,
     delete_keyword_set,
 )
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.tools.epo_api import EPOConnector
 from project_aether.tools.lens_api import LensConnector
 
@@ -90,7 +89,10 @@ def render_sidebar(language_map):
         # Jurisdiction is set to ALL by default (no filter)
         selected_jurisdictions = None
 
-        keyword_config = st.session_state.get("keyword_config", DEFAULT_KEYWORDS)
+        keyword_config = st.session_state.get(
+            "keyword_config",
+            {"English": {"positive": [], "negative": []}},
+        )
         include_terms, exclude_terms = get_active_english_keywords(keyword_config)
         cache = st.session_state.get("keyword_cache", {})
         widget_version = st.session_state.get("keyword_widget_version", 0)

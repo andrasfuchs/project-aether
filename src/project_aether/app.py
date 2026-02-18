@@ -5,9 +5,7 @@ Main Streamlit application entry point.
 
 import streamlit as st
 import logging
-import copy
 from project_aether.core.log_stream import install_log_stream_handler
-from project_aether.core.keywords import DEFAULT_KEYWORDS
 from project_aether.core.keyword_translation import (
     load_keyword_cache,
     get_history_entries,
@@ -129,11 +127,15 @@ inject_global_styles()
 def main():
     """Main application entry point."""
     
-    # Initialize Session State for Keywords if not present
-    if 'keyword_config' not in st.session_state:
-        st.session_state['keyword_config'] = copy.deepcopy(DEFAULT_KEYWORDS)
     if 'keyword_cache' not in st.session_state:
         st.session_state['keyword_cache'] = load_keyword_cache()
+    if 'keyword_config' not in st.session_state:
+        st.session_state['keyword_config'] = {
+            "English": {
+                "positive": [],
+                "negative": [],
+            }
+        }
     if 'keyword_widget_version' not in st.session_state:
         st.session_state['keyword_widget_version'] = 0
     if 'llm_scoring_model' not in st.session_state:
@@ -156,6 +158,11 @@ def main():
             st.session_state['keyword_set_update_id'] = most_recent.get("id")
             st.session_state['keyword_set_original_include'] = most_recent.get("include", [])
             st.session_state['keyword_set_original_exclude'] = most_recent.get("exclude", [])
+        else:
+            st.session_state['keyword_set_mode'] = "SAVE"
+            st.session_state['keyword_set_update_id'] = None
+            st.session_state['keyword_set_original_include'] = []
+            st.session_state['keyword_set_original_exclude'] = []
         st.session_state['keyword_set_loaded'] = True
     
     # --- HEADER SECTION ---
