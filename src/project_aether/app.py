@@ -235,9 +235,9 @@ def main():
             key="patents_per_language",
         )
         if patents_per_language >= 1000:
-            st.caption("No limit will be applied to results per language.")
+            st.caption("No limit will be applied to results.")
         else:
-            st.caption(f"Limits results to {patents_per_language} patents per language.")
+            st.caption(f"Limits results to {patents_per_language} patents per positive keyword per language.")
 
         st.markdown("---")
         st.markdown("### LLM Scoring")
