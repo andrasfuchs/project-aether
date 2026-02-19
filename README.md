@@ -1,153 +1,169 @@
-# Project Aether: Agentic Patent Intelligence Framework
+# Project Aether
 
 ![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12+-blue.svg)
-![Stack](https://img.shields.io/badge/stack-uv%20|%20Streamlit%20|%20LangChain-orange)
+![Stack](https://img.shields.io/badge/stack-uv%20%7C%20Streamlit%20%7C%20Gemini-orange)
 
-**Project Aether** is a bespoke, agentic surveillance tool designed to monitor, analyze, and interpret patent activity within the specific domain of "sparks in hydrogen"—a proxy for high-voltage plasma physics, anomalous heat generation, and Low Energy Nuclear Reactions (LENR).
+Project Aether is a Streamlit-based patent intelligence workbench focused on high-signal triage for anomalous-energy research themes (hydrogen/plasma/LENR-adjacent domains).
 
-Unlike traditional search tools, Aether focuses on the **"Negative Space" of Innovation**: rejected patents, withdrawn applications, and discontinued prosecution. It operates on the "Antigravity" paradigm, orchestrating autonomous agents to perform deep forensic analysis on "dead" intellectual property in Russia and strategic European corridors.
+It performs multilingual keyword search, provider-aware patent retrieval (EPO primary with Lens fallback), legal-status forensics (INPADOC), and LLM-assisted relevance scoring.
 
-## 🔭 The Strategic Mandate
+## What It Does
 
-In the realm of frontier physics, the most valuable intelligence often resides not in granted patents (sanitized for commerce) but in rejected applications (raw technical disclosures). Aether monitors:
-* **Geographies:** Russian Federation (primary), Poland, Romania, Czechia, Netherlands, Spain, Italy, Sweden, Norway, Finland.
-* **Targets:** Substantive rejections (e.g., Rospatent Art. 1352), anomalous heat claims, and plasma vortex technologies.
-* **Logic:** Filters out "false positives" (automotive spark plugs) to find "potential positives" (anomalous plasma discharge).
+- Runs searches across one or more languages from a sidebar-controlled keyword set.
+- Uses EPO OPS as the primary provider and Lens as fallback if EPO fails.
+- Normalizes provider records into a shared identifier contract (`record_id`, `epo_id`, `lens_id`).
+- Translates non-English results to English for downstream analysis when Gemini is configured.
+- Scores title + abstract with Gemini using configurable keyword-aware prompts.
+- Caches keyword translations, search results, patent translations, and LLM scoring outputs.
+- Renders dashboard metrics, score-ranked result views, deep-dive patent analysis, diagnostics, and live logs.
 
-## 🏗 Architecture: The "Antigravity" Paradigm
-
-Aether moves beyond linear scripting to a **Manager-Worker Agent Topology**. The system treats the research process as a mission, not a query.
+## Current Runtime Architecture
 
 ```mermaid
 graph TD
-    User((User)) -->|Mission Control| UI["Streamlit 'Antigravity' UI"]
-    UI -->|Triggers| Manager[🕵️ Manager Agent]
-    
-    subgraph "Agent Swarm"
-        Manager -->|Delegates| Researcher[📡 Researcher Agent]
-        Manager -->|Delegates| Analyst[🧠 Analyst Agent]
-    end
-    
-    Researcher <-->|MCP| Lens[Lens.org MCP]
-    Researcher <-->|MCP| Google[Google Patents MCP]
-    
-    Analyst <-->|Inference| LLM[LLM / Gemini Pro]
-    Analyst <-->|Forensics| INPADOC[Status Decoder]
-    
-    Analyst -->|Generates| Artifacts[JSON Artifacts]
-    Artifacts -->|Rendered as| UI
+    UI[Streamlit App] --> Sidebar[Keyword + Language Config]
+    UI --> Search[Search Orchestration Service]
+
+    Search --> EPO[EPO OPS Connector (Primary)]
+    Search --> Lens[Lens Connector (Fallback)]
+
+    Search --> Translation[Patent Translation Cache/Service]
+    Search --> Analyst[Analyst Agent]
+    Analyst --> INPADOC[Legal Status Decoder]
+    Analyst --> Gemini[Gemini LLM Scoring]
+    Analyst --> ScoreCache[Scoring Cache]
+
+    Search --> UI
+    UI --> Tabs[Dashboard / Results / Analysis / Settings / Logs]
 ```
 
-### Key Components
+## Tech Stack
 
-1. **Manager Agent:** Orchestrates the weekly mission, manages state, and handles error recovery.
-2. **Researcher Agent:** Interfaces with external patent providers (EPO OPS primary, Lens fallback), handling rate limits and query translation.
-3. **Analyst Agent:** Performs forensic analysis on INPADOC codes (distinguishing "administrative lapse" from "scientific rejection") and semantic scoring of abstracts.
-4. **Artifacts:** Structured, interactive state objects rendered in the UI, allowing human-in-the-loop verification.
+- Python 3.12+
+- Streamlit UI
+- Gemini API (`google-genai`) for scoring and translation
+- EPO OPS + Lens provider connectors
+- Pydantic settings via `.env`
+- Local JSON caches in `data/`
+- `uv` for dependency and environment management
 
-## 🛠 Tech Stack
+## Quick Start
 
-* **Runtime:** Python 3.12+
-* **Package Manager:** `uv` (for instant environment resolution)
-* **UI/Frontend:** Streamlit (Agentic Workspace)
-* **LLM Integration:** LangChain / Google Generative AI SDK
-* **Data Layer:** SQLite (Local Cache) & LanceDB (Vector Embeddings)
-* **Protocol:** Model Context Protocol (MCP) for tool abstraction
+### 1) Install dependencies
 
-## ⚡ Quick Start
-
-This project uses `uv` for dependency management.
-
-### Prerequisites
-
-* Python 3.12+
-* EPO OPS Consumer Key + Consumer Secret
-* Google Gemini / OpenAI API Key
-
-Lens.org remains supported as an optional fallback provider during migration.
-
-### Installation
-
-1. **Clone the repository:**
-```bash
-git clone [https://github.com/YourUsername/project-aether.git](https://github.com/YourUsername/project-aether.git)
-cd project-aether
-
-```
-
-
-2. **Initialize environment with uv:**
 ```bash
 uv sync
-
 ```
 
+### 2) Configure environment variables
 
-3. **Configure Secrets:**
-Copy the example secrets file and add your API keys.
 ```bash
 cp .env.example .env
-# Edit .env with your EPO credentials and LLM API key
-
 ```
 
+On PowerShell (Windows):
 
-4. **Run the Mission Control:**
+```powershell
+Copy-Item .env.example .env
+```
+
+Then edit `.env` and set at minimum:
+
+- `EPO_CONSUMER_KEY`
+- `EPO_CONSUMER_SECRET`
+- `GEMINI_API_KEY`
+
+Optional fallback / extras:
+
+- `LENS_ORG_API_TOKEN`
+- `OPENAI_API_KEY`
+- `SERPAPI_KEY`
+
+### 3) Run the app
+
 ```bash
 uv run streamlit run src/project_aether/app.py
-
 ```
 
+## Configuration Notes
 
+- `PATENT_PROVIDER` exists in config, but runtime search currently enforces EPO-first routing with Lens fallback.
+- If EPO credentials are missing and Lens is configured, the app continues using Lens fallback.
+- If both providers are unavailable, searches are aborted with an error.
 
-## 🧩 Folder Structure
+## UI Workflow
+
+1. In the sidebar, define keyword include/exclude terms (save/update reusable keyword sets).
+2. Select one or more query languages.
+3. Start search.
+4. Monitor live dashboard progress and provider diagnostics.
+5. Review scored results and inspect records in Detailed Analysis.
+6. Use Logs tab for live runtime troubleshooting.
+
+## Caching
+
+Project Aether persists local caches under `data/`:
+
+- `keyword_cache.json`: keyword sets, history, and translated keyword terms.
+- `search_cache.json`: provider search responses keyed by full query parameters.
+- `translation_cache.json`: abstract/text translations across languages.
+- `scoring_cache.json`: LLM score/tag/feature outputs keyed by prompt+model+text.
+
+Search cache entries are automatically cleaned when expired.
+
+## Repository Structure
 
 ```text
 project-aether/
-├── .env                   # Environment variables (API keys) - DO NOT COMMIT
-├── .env.example           # Template for environment variables
-├── .gitignore             # Git ignore patterns
-├── LICENSE                # AGPLv3 License
-├── pyproject.toml         # uv dependencies and project metadata
-├── README.md              # Project documentation
-├── uv.lock                # Lock file for reproducible builds
-├── data/                  # Local data storage (SQLite, vectors)
+├── .env.example
+├── data/
+│   ├── keyword_cache.json
+│   ├── scoring_cache.json
+│   ├── search_cache.json
+│   ├── translation_cache.json
+│   └── vectors/
 ├── docs/
-│   └── implementation_plan.md  # Strategic implementation plan
-└── src/project_aether/
-    ├── __init__.py
-    ├── app.py             # Streamlit Entry Point (Mission Control)
-    ├── agents/            # Agent Definitions
-    │   ├── __init__.py
-    │   ├── manager.py     # Mission Orchestration
-    │   ├── researcher.py  # API Interaction (Lens.org)
-    │   └── analyst.py     # Semantic Analysis & Forensic Scoring
-    ├── core/              # Core Infrastructure
-    │   ├── __init__.py
-    │   ├── config.py      # Configuration management
-    │   └── mcp_client.py  # Model Context Protocol Client
-    ├── tools/             # External API Wrappers
-    │   ├── __init__.py
-    │   ├── lens_api.py    # Lens.org API Connector
-    │   └── inpadoc.py     # Legal Status Decoder (INPADOC codes)
-    └── utils/             # Utilities
-        ├── __init__.py
-        └── artifacts.py   # Artifact generation logic
-
+│   ├── implementation_plan.md
+│   ├── provider_migration_notes.md
+│   └── ...
+├── src/project_aether/
+│   ├── app.py
+│   ├── agents/
+│   │   └── analyst.py
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── keyword_translation.py
+│   │   ├── llm_scoring.py
+│   │   ├── scoring_cache.py
+│   │   ├── search_cache.py
+│   │   └── translation_service.py
+│   ├── services/
+│   │   └── search.py
+│   ├── tools/
+│   │   ├── epo_api.py
+│   │   ├── lens_api.py
+│   │   └── inpadoc.py
+│   ├── ui/
+│   │   ├── dashboard.py
+│   │   ├── results.py
+│   │   ├── analysis.py
+│   │   ├── logs.py
+│   │   └── sidebar.py
+│   └── utils/
+│       └── artifacts.py
+├── pyproject.toml
+├── requirements.txt
+└── README.md
 ```
 
-## 🕵️‍♂️ Usage: The Weekly Workflow
+## Troubleshooting
 
-1. **Monday Morning Run:** The Manager Agent wakes up and queries the last 7 days of "death" data (Discontinued/Withdrawn patents) in target jurisdictions.
-2. **Forensic Filter:** The Analyst Agent decodes legal status. Code `FC9A` (Russia) flags a "Red Alert" (Substantive Rejection).
-3. **Semantic Scoring:** Abstracts are embedded and scored against the "Anomalous Heat" vector. High scores generate a **Deep Dive Artifact**.
-4. **Human Review:** You log into the Streamlit UI, view the "Rejection Matrix," and mark findings as *Relevant* or *Noise* to retrain the vector search.
+- **No search results:** verify keyword include terms are non-empty and at least one language is selected.
+- **Provider errors:** check `EPO_CONSUMER_KEY` / `EPO_CONSUMER_SECRET`; optionally configure `LENS_ORG_API_TOKEN` for fallback.
+- **No scoring/translation:** verify `GEMINI_API_KEY` and check the Logs tab for quota or auth failures.
+- **Stale behavior:** inspect cache files in `data/` and clear selectively if needed.
 
-## 📄 License
+## License
 
-This project is licensed under the **GNU AGPLv3** - see the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
-
----
-
-*Built with skepticism and curiosity.*
+Licensed under GNU AGPLv3. See `LICENSE`.
