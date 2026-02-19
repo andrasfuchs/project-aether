@@ -163,7 +163,3 @@ project-aether/
 - **Provider errors:** check `EPO_CONSUMER_KEY` / `EPO_CONSUMER_SECRET`; optionally configure `LENS_ORG_API_TOKEN` for fallback.
 - **No scoring/translation:** verify `GEMINI_API_KEY` and check the Logs tab for quota or auth failures.
 - **Stale behavior:** inspect cache files in `data/` and clear selectively if needed.
-
-## License
-
-Licensed under GNU AGPLv3. See `LICENSE`.
