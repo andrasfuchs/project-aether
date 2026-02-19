@@ -22,20 +22,20 @@ It performs multilingual keyword search, provider-aware patent retrieval (EPO pr
 
 ```mermaid
 graph TD
-    UI[Streamlit App] --> Sidebar[Keyword + Language Config]
-    UI --> Search[Search Orchestration Service]
+    UI["Streamlit App"] --> Sidebar["Keyword and Language Config"]
+    UI --> Search["Search Orchestration Service"]
 
-    Search --> EPO[EPO OPS Connector (Primary)]
-    Search --> Lens[Lens Connector (Fallback)]
+    Search --> EPO["EPO OPS Connector - Primary"]
+    Search --> Lens["Lens Connector - Fallback"]
 
-    Search --> Translation[Patent Translation Cache/Service]
-    Search --> Analyst[Analyst Agent]
-    Analyst --> INPADOC[Legal Status Decoder]
-    Analyst --> Gemini[Gemini LLM Scoring]
-    Analyst --> ScoreCache[Scoring Cache]
+    Search --> Translation["Patent Translation Cache and Service"]
+    Search --> Analyst["Analyst Agent"]
+    Analyst --> INPADOC["Legal Status Decoder"]
+    Analyst --> Gemini["Gemini LLM Scoring"]
+    Analyst --> ScoreCache["Scoring Cache"]
 
     Search --> UI
-    UI --> Tabs[Dashboard / Results / Analysis / Settings / Logs]
+    UI --> Tabs["Dashboard, Results, Analysis, Settings, Logs"]
 ```
 
 ## Tech Stack
