@@ -187,11 +187,15 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
         time.sleep(1)  # UX pacing
 
         config = get_config()
-        # Migration policy: EPO is always primary, Lens is fallback.
-        # This intentionally overrides PATENT_PROVIDER for runtime search routing.
-        selected_provider = "epo"
-        primary_connector = EPOConnector()
-        fallback_connector = LensConnector()
+        selected_provider = config.normalized_patent_provider
+        if selected_provider == "lens":
+            primary_connector = LensConnector()
+            fallback_provider = "epo"
+            fallback_connector = EPOConnector()
+        else:
+            primary_connector = EPOConnector()
+            fallback_provider = "lens"
+            fallback_connector = LensConnector()
         keyword_config = st.session_state.get("keyword_config")
         if not keyword_config:
             st.error("No active keyword set found. Set Include/Exclude terms in the sidebar before searching.")
@@ -318,6 +322,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 # Check cache before making API call
                 cached_result = get_cached_search_results(
                     cache=search_cache,
+                    provider=selected_provider,
                     jurisdiction=jurisdiction,
                     start_date=query_start_date,
                     end_date=query_end_date,
@@ -396,7 +401,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                                     progress_callback=_on_keyword_search_progress,
                                 )
                             )
-                            provider_used = "lens"
+                            provider_used = fallback_provider
                             fallback_reason = str(primary_exc)
                         except Exception as fallback_exc:
                             raise RuntimeError(
@@ -412,6 +417,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     # Cache the successful result
                     set_cached_search_results(
                         cache=search_cache,
+                        provider=selected_provider,
                         jurisdiction=jurisdiction,
                         start_date=query_start_date,
                         end_date=query_end_date,

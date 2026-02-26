@@ -79,6 +79,7 @@ def save_search_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> Non
 
 
 def _make_cache_key(
+    provider: Optional[str],
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
@@ -114,6 +115,7 @@ def _make_cache_key(
     # Build a canonical representation of all parameters
     payload = json.dumps(
         {
+            "provider": provider,
             "jurisdiction": jurisdiction,
             "start_date": start_date,
             "end_date": end_date,
@@ -148,6 +150,7 @@ def _is_cache_entry_expired(cached_at: str) -> bool:
 
 def get_cached_search_results(
     cache: Dict[str, Any],
+    provider: Optional[str],
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
@@ -161,6 +164,7 @@ def get_cached_search_results(
     
     Args:
         cache: The search cache dictionary.
+        provider: Active patent provider (`lens` or `epo`) or None.
         jurisdiction: Single jurisdiction code or None.
         start_date: Start date in YYYY-MM-DD or None.
         end_date: End date in YYYY-MM-DD or None.
@@ -174,6 +178,7 @@ def get_cached_search_results(
         Cached search results dictionary if found and valid, None otherwise.
     """
     cache_key = _make_cache_key(
+        provider=provider,
         jurisdiction=jurisdiction,
         start_date=start_date,
         end_date=end_date,
@@ -202,6 +207,7 @@ def get_cached_search_results(
 
 def set_cached_search_results(
     cache: Dict[str, Any],
+    provider: Optional[str],
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
@@ -216,6 +222,7 @@ def set_cached_search_results(
     
     Args:
         cache: The search cache dictionary.
+        provider: Active patent provider (`lens` or `epo`) or None.
         jurisdiction: Single jurisdiction code or None.
         start_date: Start date in YYYY-MM-DD or None.
         end_date: End date in YYYY-MM-DD or None.
@@ -227,6 +234,7 @@ def set_cached_search_results(
         results: Search results dictionary to cache.
     """
     cache_key = _make_cache_key(
+        provider=provider,
         jurisdiction=jurisdiction,
         start_date=start_date,
         end_date=end_date,
@@ -241,6 +249,7 @@ def set_cached_search_results(
     entry = {
         "cached_at": _utc_now().isoformat(),
         "parameters": {
+            "provider": provider,
             "jurisdiction": jurisdiction,
             "start_date": start_date,
             "end_date": end_date,

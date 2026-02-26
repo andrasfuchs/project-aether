@@ -186,30 +186,45 @@ def render_sidebar(language_map):
         # System Status in Sidebar
         st.write("#### Connectivity")
 
-        provider_name = "EPO"
-        if config.is_epo_configured:
-            st.markdown(
-                f'<div class="status-badge status-ok">Primary Patent Provider ({provider_name}) Active</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div class="status-badge status-err">Primary Patent Provider ({provider_name}) Offline</div>',
-                unsafe_allow_html=True,
-            )
-            st.caption("Missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
+        primary_provider = config.normalized_patent_provider
+        secondary_provider = "lens" if primary_provider == "epo" else "epo"
 
-        fallback_name = "LENS"
-        if config.is_lens_configured:
-            st.markdown(
-                f'<div class="status-badge status-ok">{fallback_name} fallback available</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f'<div class="status-badge status-warn">{fallback_name} fallback unavailable</div>',
-                unsafe_allow_html=True,
-            )
+        provider_labels = {
+            "epo": "EPO OPS",
+            "lens": "LENS.org",
+        }
+        provider_available = {
+            "epo": config.is_epo_configured,
+            "lens": config.is_lens_configured,
+        }
+
+        primary_label = provider_labels[primary_provider]
+        primary_available = provider_available[primary_provider]
+        primary_status_class = "status-ok" if primary_available else "status-err"
+        primary_status_text = "available" if primary_available else "unavailable"
+        st.markdown(
+            f'<div class="status-badge {primary_status_class}">Primary Provider: {primary_label} ({primary_status_text})</div>',
+            unsafe_allow_html=True,
+        )
+        if not primary_available:
+            if primary_provider == "epo":
+                st.caption("Missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
+            else:
+                st.caption("Missing `LENS_ORG_API_TOKEN`")
+
+        secondary_label = provider_labels[secondary_provider]
+        secondary_available = provider_available[secondary_provider]
+        secondary_status_class = "status-ok" if secondary_available else "status-warn"
+        secondary_status_text = "available" if secondary_available else "unavailable"
+        st.markdown(
+            f'<div class="status-badge {secondary_status_class}">Secondary Provider (Fallback): {secondary_label} ({secondary_status_text})</div>',
+            unsafe_allow_html=True,
+        )
+        if not secondary_available:
+            if secondary_provider == "epo":
+                st.caption("Fallback unavailable: missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
+            else:
+                st.caption("Fallback unavailable: missing `LENS_ORG_API_TOKEN`")
 
         st.write("")  # Spacer
 
