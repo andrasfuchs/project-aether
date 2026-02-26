@@ -356,6 +356,7 @@ class AnalystAgent:
         )
         cached = get_cached_score(
             self.scoring_cache,
+            record_id,
             title,
             abstract,
             system_prompt,

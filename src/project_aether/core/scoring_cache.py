@@ -4,7 +4,6 @@ Cache utilities for LLM scoring results.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +12,7 @@ from typing import Any, Dict, Optional
 from project_aether.core.config import get_config
 
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 
 def _utc_now() -> str:
@@ -28,7 +27,7 @@ def get_scoring_cache_path() -> Path:
 def _empty_scoring_cache() -> Dict[str, Any]:
     return {
         "version": CACHE_VERSION,
-        "entries": {},
+        "entries_by_record_id": {},
         "updated_at": _utc_now(),
     }
 
@@ -41,7 +40,7 @@ def load_scoring_cache(path: Optional[Path] = None) -> Dict[str, Any]:
     try:
         with cache_path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
-        data.setdefault("entries", {})
+        data.setdefault("entries_by_record_id", {})
         data.setdefault("version", CACHE_VERSION)
         data.setdefault("updated_at", _utc_now())
         return data
@@ -57,30 +56,20 @@ def save_scoring_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> No
         json.dump(cache, handle, indent=2, ensure_ascii=False)
 
 
-def _make_cache_key(
-    title: str,
-    abstract: str,
-    system_message: str,
-    model: str,
-) -> str:
-    payload = "\n".join([
-        (title or "").strip(),
-        (abstract or "").strip(),
-        (system_message or "").strip(),
-        (model or "").strip(),
-    ])
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
 def get_cached_score(
     cache: Dict[str, Any],
+    record_id: str,
     title: str,
     abstract: str,
     system_message: str,
     model: str,
 ) -> Optional[Dict[str, Any]]:
-    cache_key = _make_cache_key(title, abstract, system_message, model)
-    return cache.get("entries", {}).get(cache_key)
+    rid = (record_id or "").strip()
+    if rid:
+        indexed = cache.get("entries_by_record_id", {}).get(rid)
+        if isinstance(indexed, dict):
+            return indexed
+    return None
 
 
 def set_cached_score(
@@ -94,10 +83,10 @@ def set_cached_score(
     tags: list[str],
     features: list[str],
 ) -> Dict[str, Any]:
-    cache_key = _make_cache_key(title, abstract, system_message, model)
-    entries = cache.setdefault("entries", {})
+    rid = (record_id or "").strip()
+    entries_by_record_id = cache.setdefault("entries_by_record_id", {})
     entry = {
-        "record_id": record_id,
+        "record_id": rid,
         "title": title,
         "abstract": abstract,
         "system_message": system_message,
@@ -107,5 +96,6 @@ def set_cached_score(
         "features": features,
         "scored_at": _utc_now(),
     }
-    entries[cache_key] = entry
+    if rid:
+        entries_by_record_id[rid] = entry
     return entry
