@@ -277,27 +277,11 @@ def render_deep_dive(assessment):
             
             # Jurisdiction and severity
             st.markdown(f"**Jurisdiction:** {status.jurisdiction}")
-            st.markdown(f"**Severity:** {status.severity.value}")
-            
+           
             # Code found
             if status.code_found:
                 st.markdown(f"**Event Code:** `{status.code_found}`")
-            
-            # Refusal reason
-            if status.refusal_reason and status.refusal_reason != "Unknown":
-                st.markdown(f"**Reason:** {status.refusal_reason}")
-            
-            # Interpretation with colored background
-            if status.interpretation and status.interpretation != "No legal status events found.":
-                st.markdown(
-                    f"""
-                <div style="background-color: rgba({127 if status.severity.value == 'MEDIUM' else (239 if status.severity.value == 'HIGH' else 148)}, {163 if status.severity.value == 'MEDIUM' else (68 if status.severity.value == 'HIGH' else 163)}, {184 if status.severity.value == 'MEDIUM' else (68 if status.severity.value == 'HIGH' else 184)}, 0.1); padding: 12px; border-radius: 6px; border-left: 4px solid {severity_color}; margin-top: 10px;">
-                    <small>{status.interpretation}</small>
-                </div>
-                """,
-                    unsafe_allow_html=True,
-                )
-        
+                               
         # Relevance section with tooltip
         st.markdown(
             """
