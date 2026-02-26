@@ -455,7 +455,7 @@ class LensConnector:
         
         # Create the detailed log message
         logger.info(
-            f"✅ Completed patent search in {country_name} "
+            f"Completed patent search in {country_name} "
             f"with {language} keywords: "
             f"positive={pos_keywords_str or 'none'} and "
             f"negative={neg_keywords_str or 'none'} "

@@ -360,7 +360,12 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     )
                 
                 if cached_result is not None:
-                    logger.info(f"Using cached search results for {language_name}")
+                    cached_result_count = len(cached_result.get("data", []))
+                    logger.info(
+                        "Using cached search results for %s (loaded %s results)",
+                        language_name,
+                        cached_result_count,
+                    )
                     result = cached_result
                     provider_used = result.get("provider_used", selected_provider)
                     fallback_reason = result.get("fallback_reason")
@@ -432,7 +437,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 # Save cache after each successful term search
                 try:
                     save_search_cache(search_cache)
-                    logger.info(f"Persisted search cache after successful search for {language_name}")
+                    logger.debug(f"Persisted search cache after successful search for {language_name}")
                 except Exception as save_exc:
                     logger.warning(f"Failed to persist search cache after {language_name} search: {save_exc}")
 
@@ -466,7 +471,7 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                 }
                 search_diagnostics.append(diagnostics_entry)
 
-                logger.info(
+                logger.debug(
                     "Search diagnostics | lang=%s provider=%s total_available=%s raw_entries=%s normalized=%s pre_filter=%s filtered=%s",
                     diagnostics_entry["language"],
                     diagnostics_entry["provider"],

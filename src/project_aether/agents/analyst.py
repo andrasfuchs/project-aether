@@ -237,7 +237,7 @@ class AnalystAgent:
                     if name and isinstance(name, str):
                         inventors.append(name)
         
-        logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction})")
+        #logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction})")
         
         # 1. Legal Status Forensics
         status_analysis = analyze_legal_status(patent_record)
@@ -268,7 +268,7 @@ class AnalystAgent:
         english_title = str(patent_record.get("title_en") or title)
         english_abstract = str(patent_record.get("abstract_en") or abstract)
 
-        llm_result = self._score_with_llm(record_id, english_title, english_abstract)
+        llm_result = self._score_with_llm(record_id, english_title, english_abstract, jurisdiction)
         relevance_score = llm_result["score"]
         llm_tags = llm_result["tags"]
         llm_features = llm_result["features"]
@@ -348,7 +348,7 @@ class AnalystAgent:
         # Clamp to 0-100 range
         return max(0.0, min(100.0, score))
 
-    def _score_with_llm(self, record_id: str, title: str, abstract: str) -> Dict[str, Any]:
+    def _score_with_llm(self, record_id: str, title: str, abstract: str, jurisdiction: str) -> Dict[str, Any]:
         system_prompt = apply_prompt_placeholders(
             self.scoring_system_prompt,
             self.anomalous_keywords,
@@ -362,8 +362,10 @@ class AnalystAgent:
             self.scoring_model,
         )
         if cached:
+            cached_score = float(cached.get("score", 0.0))
+            logger.info(f"Using cached score for {record_id} ({jurisdiction}): {cached_score:.2f}")
             return {
-                "score": float(cached.get("score", 0.0)),
+                "score": cached_score,
                 "tags": cached.get("tags", []) or [],
                 "features": cached.get("features", []) or [],
             }
@@ -413,6 +415,7 @@ class AnalystAgent:
         parsed = self._parse_llm_json(response.text or "{}")
         score = float(parsed.get("score", 0.0))
         score = max(0.0, min(100.0, score))
+        logger.info(f"Determined LLM score for {record_id} ({jurisdiction}): {score:.2f}")
         tags = parsed.get("tags") or []
         if not isinstance(tags, list):
             tags = [str(tags)]

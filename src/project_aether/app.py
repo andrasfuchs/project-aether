@@ -33,6 +33,9 @@ logging.basicConfig(
     ]
 )
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("google_genai.models").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 logger = logging.getLogger("ProjectAether")
 
 # Capture all in-process logs into an in-memory stream for the Live Logs tab

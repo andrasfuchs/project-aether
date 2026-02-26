@@ -316,7 +316,7 @@ class ArtifactGenerator:
             anomalous_count=anomalous,
         )
         
-        logger.info(f"📊 Created dashboard artifact for {self.mission_id}")
+        #logger.info(f"Created dashboard artifact for {self.mission_id}")
         return artifact
     
     def create_review_artifact(
