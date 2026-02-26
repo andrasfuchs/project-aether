@@ -544,46 +544,20 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
             50,
         )
 
-        # Analyze patents incrementally and update dashboard in real-time
-        assessments = []
-        high_count = 0
-        medium_count = 0
-        low_count = 0
+        # Analyze patents concurrently (up to MAX_CONCURRENT_SCORING workers)
+        assessments = analyst.analyze_batch(all_results)
 
-        for i, patent_record in enumerate(all_results):
-            try:
-                assessment = analyst.analyze_patent(patent_record)
-                assessments.append(assessment)
+        # Compute final counts for dashboard
+        high_count = sum(1 for a in assessments if a.intelligence_value == "HIGH")
+        medium_count = sum(1 for a in assessments if a.intelligence_value == "MEDIUM")
+        low_count = len(assessments) - high_count - medium_count
 
-                # Count by intelligence value
-                if assessment.intelligence_value == "HIGH":
-                    high_count += 1
-                elif assessment.intelligence_value == "MEDIUM":
-                    medium_count += 1
-                else:
-                    low_count += 1
-
-                # Update status using dashboard renderer after each successful step
-                percent_done = int(50 + ((i + 1) / len(all_results)) * 45)
-                render_dashboard(
-                    dashboard_container,
-                    _build_dashboard_snapshot(i + 1, high_count, medium_count, low_count),
-                    f"Analyzing ({i + 1}/{len(all_results)})",
-                    percent_done,
-                )
-
-                if assessment.intelligence_value == "HIGH":
-                    logger.info(
-                        f"HIGH VALUE TARGET: {assessment.record_id} "
-                        f"({assessment.jurisdiction}) - {assessment.summary}"
-                    )
-
-            except Exception as exc:
-                logger.error(f"Failed to analyze patent: {exc}")
-                # Check if it's a quota error
-                from project_aether.agents.analyst import QuotaExhaustedError
-                if isinstance(exc, QuotaExhaustedError):
-                    raise
+        render_dashboard(
+            dashboard_container,
+            _build_dashboard_snapshot(len(assessments), high_count, medium_count, low_count),
+            f"Analyzed {len(assessments)}/{len(all_results)} patents",
+            90,
+        )
 
         render_dashboard(
             dashboard_container,

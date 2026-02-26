@@ -8,6 +8,7 @@ from typing import Iterable
 
 
 DEFAULT_SCORING_MODEL = "gemini-3-flash-preview"
+MAX_CONCURRENT_SCORING = 20
 
 DEFAULT_SCORING_SYSTEM_PROMPT = (
     "You are a patent relevance scoring model for anomalous energy research. "

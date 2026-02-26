@@ -7,6 +7,8 @@ Based on implementation plan Section 4.1.3.
 import json
 import logging
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
@@ -23,6 +25,7 @@ from project_aether.core.keywords import get_flattened_keywords
 from project_aether.core.llm_scoring import (
     DEFAULT_SCORING_MODEL,
     DEFAULT_SCORING_SYSTEM_PROMPT,
+    MAX_CONCURRENT_SCORING,
     apply_prompt_placeholders,
 )
 from project_aether.core.scoring_cache import (
@@ -33,6 +36,12 @@ from project_aether.core.scoring_cache import (
 )
 
 logger = logging.getLogger("AnalystAgent")
+
+# Global thread pool for all scoring/analysis operations (shared across batches)
+_executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_SCORING)
+
+# Thread-safe lock for scoring cache operations
+_scoring_cache_lock = threading.Lock()
 
 
 class QuotaExhaustedError(Exception):
@@ -427,18 +436,19 @@ class AnalystAgent:
             features = [str(features)]
         features = [str(feature).strip() for feature in features if str(feature).strip()]
 
-        set_cached_score(
-            self.scoring_cache,
-            record_id=record_id,
-            title=title,
-            abstract=abstract,
-            system_message=system_prompt,
-            model=self.scoring_model,
-            score=score,
-            tags=tags,
-            features=features,
-        )
-        save_scoring_cache(self.scoring_cache)
+        with _scoring_cache_lock:
+            set_cached_score(
+                self.scoring_cache,
+                record_id=record_id,
+                title=title,
+                abstract=abstract,
+                system_message=system_prompt,
+                model=self.scoring_model,
+                score=score,
+                tags=tags,
+                features=features,
+            )
+            save_scoring_cache(self.scoring_cache)
 
         return {"score": score, "tags": tags, "features": features}
 
@@ -600,25 +610,31 @@ class AnalystAgent:
         Returns:
             List of PatentAssessment objects
         """
-        assessments = []
-        
-        for record in patent_records:
+        assessments_by_index: List[Optional[PatentAssessment]] = [None] * len(patent_records)
+        future_to_index = {
+            _executor.submit(self.analyze_patent, record): index
+            for index, record in enumerate(patent_records)
+        }
+
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
             try:
-                assessment = self.analyze_patent(record)
-                assessments.append(assessment)
-                
+                assessment = future.result()
+                assessments_by_index[index] = assessment
+
                 if assessment.intelligence_value == "HIGH":
                     logger.info(
                         f"🎯 HIGH VALUE TARGET: {assessment.record_id} "
                         f"({assessment.jurisdiction}) - {assessment.summary}"
                     )
             except QuotaExhaustedError:
-                # Re-raise quota errors to stop processing and inform user
+                for pending_future in future_to_index:
+                    pending_future.cancel()
                 raise
             except Exception as e:
                 logger.error(f"Failed to analyze patent: {e}")
-        
-        return assessments
+
+        return [assessment for assessment in assessments_by_index if assessment is not None]
     
     def filter_high_priority(
         self,
