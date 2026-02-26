@@ -2,6 +2,7 @@ from datetime import datetime
 import asyncio
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from project_aether.core.config import get_config
 from project_aether.core.keyword_helpers import get_active_english_keywords
@@ -232,5 +233,11 @@ def render_sidebar(language_map):
             st.markdown('<div class="status-badge status-ok">LLM service connected</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
+
+
+        st.markdown("---")
+
+        components.iframe("https://lens.org/lens/embed/attribution", height=30, scrolling=False)
+
 
     return config, selected_language_codes, selected_language_names, start_date, end_date, run_mission
