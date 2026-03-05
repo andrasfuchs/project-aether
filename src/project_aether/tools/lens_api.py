@@ -180,6 +180,10 @@ class LensConnector:
                     logger.warning("Rate limit hit (429). Retrying...")
                     raise RateLimitError("API rate limit exceeded")
                 
+                if response.status_code == 204:
+                    # No Content (often means scroll exhausted)
+                    return {"data": [], "total": 0}
+
                 # Handle other errors
                 if response.status_code != 200:
                     error_msg = f"Lens API error {response.status_code}: {response.text}"
@@ -373,9 +377,15 @@ class LensConnector:
         jurisdictions = [jurisdiction] if jurisdiction else None
         _ = progress_callback
         
-        # Build the query with language parameter
-
-        query = self.build_keyword_search_query(
+        # Build the initial query to find out the total available
+        target_limit = limit if limit is not None else 1000
+        batch_size = min(target_limit, 99)
+        all_raw_results = []
+        total_from_api = 0
+        scroll_id = None
+        
+        # Build the initial query
+        base_query = self.build_keyword_search_query(
             jurisdictions,
             start_date,
             end_date,
@@ -383,22 +393,61 @@ class LensConnector:
             negative_keywords=negative_keywords,
             patent_status_filter=patent_status_filter,
             language=language,
-            limit=limit,
+            limit=batch_size,
         )
         
-        # Execute the search
-        result = await self.search_patents(query)
+        if target_limit > batch_size:
+            base_query["scroll"] = "1m"
+
+        final_result = {}
+
+        while len(all_raw_results) < target_limit:
+            if scroll_id:
+                current_query = {
+                    "scroll_id": scroll_id,
+                    "scroll": "1m"
+                }
+            else:
+                current_query = base_query
+
+            # Execute the search
+            result = await self.search_patents(current_query)
+            
+            if not final_result:
+                final_result = result
+            
+            raw_results = result.get("data", [])
+            # Update scroll_id from the latest response
+            scroll_id = result.get("scroll_id")
+            
+            # total might not be in scroll responses, so capture from the first one
+            if "total" in result:
+                total_from_api = result["total"]
+            
+            if not raw_results:
+                # No more results or 204 received
+                break
+                
+            all_raw_results.extend(raw_results)
+            
+            # If no scroll_id was returned, pagination is not supported or exhausted
+            if not scroll_id:
+                break
+                
+            # If we've got all the results the API claims are there, stop early
+            if len(all_raw_results) >= total_from_api:
+                break
         
-        # Extract results for additional filtering and logging
-        raw_results = result.get("data", [])
-        total_from_api = result.get("total", 0)
-        
+        # Truncate to the exact target_limit if we over-fetched slightly
+        if len(all_raw_results) > target_limit:
+            all_raw_results = all_raw_results[:target_limit]
+
         # The API already filters by negative keywords in the query,
         # but we'll do a secondary check and count for logging accuracy
         filtered_results = []
         excluded_count = 0
         
-        for patent in raw_results:
+        for patent in all_raw_results:
             # Check if any negative keyword appears in abstract or title
             abstract_text = ""
             if "abstract" in patent:
@@ -432,11 +481,12 @@ class LensConnector:
                 filtered_results.append(patent)
         
         # Update result with filtered and normalized data
-        result["data"] = [
+        final_result["data"] = [
             self._normalize_lens_patent_record(patent)
             for patent in filtered_results
         ]
-        result["filtered_total"] = len(filtered_results)
+        final_result["filtered_total"] = len(filtered_results)
+        final_result["total_from_api"] = total_from_api
         
         # Generate detailed logging
         if jurisdiction:
@@ -463,7 +513,7 @@ class LensConnector:
             f"(from {total_from_api} API results, {excluded_count} filtered by negative keywords)"
         )
         
-        return result
+        return final_result
     
     async def get_patent_by_lens_id(self, lens_id: str) -> Optional[Dict]:
         """
@@ -582,6 +632,7 @@ async def search_patents_by_keywords(
         positive_keywords=positive_keywords,
         negative_keywords=negative_keywords,
         patent_status_filter=patent_status_filter,
+        limit=99,
     )
     
     return await connector.search_patents(query)
