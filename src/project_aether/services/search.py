@@ -550,8 +550,31 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
             50,
         )
 
+        analysis_state = {
+            "high": 0,
+            "medium": 0,
+            "low": 0
+        }
+        
+        def update_analysis_progress(completed, total, msg, assessment):
+            if assessment:
+                if assessment.intelligence_value == "HIGH":
+                    analysis_state["high"] += 1
+                elif assessment.intelligence_value == "MEDIUM":
+                    analysis_state["medium"] += 1
+                else:
+                    analysis_state["low"] += 1
+                
+            pct = 50 + int((completed / total) * 40) if total > 0 else 50
+            render_dashboard(
+                dashboard_container,
+                _build_dashboard_snapshot(total, analysis_state["high"], analysis_state["medium"], analysis_state["low"]),
+                msg,
+                pct,
+            )
+
         # Analyze patents concurrently (up to MAX_CONCURRENT_SCORING workers)
-        assessments = analyst.analyze_batch(all_results)
+        assessments = analyst.analyze_batch(all_results, progress_callback=update_analysis_progress)
 
         # Compute final counts for dashboard
         high_count = sum(1 for a in assessments if a.intelligence_value == "HIGH")

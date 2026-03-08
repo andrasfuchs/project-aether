@@ -199,13 +199,14 @@ class AnalystAgent:
             "C25B 1/00",  # Electrolytic production
         }
     
-    def analyze_patent(self, patent_record: Dict) -> PatentAssessment:
+    def analyze_patent(self, patent_record: Dict, progress_callback=None) -> PatentAssessment:
         """
         Perform complete analysis of a single patent.
         
         Args:
             patent_record: Patent data from Lens.org API
                           May include pre-translated fields: title_en, abstract_en, claims_en
+            progress_callback: Optional callable for signaling progress updates
             
         Returns:
             PatentAssessment with complete analysis
@@ -600,17 +601,20 @@ class AnalystAgent:
         
         return " | ".join(parts)
     
-    def analyze_batch(self, patent_records: List[Dict]) -> List[PatentAssessment]:
+    def analyze_batch(self, patent_records: List[Dict], progress_callback=None) -> List[PatentAssessment]:
         """
         Analyze multiple patents in batch.
         
         Args:
             patent_records: List of patent records from the active provider
+            progress_callback: Optional callable that accepts (completed_count, total_count, message)
             
         Returns:
             List of PatentAssessment objects
         """
         assessments_by_index: List[Optional[PatentAssessment]] = [None] * len(patent_records)
+        completed_count = 0
+        
         future_to_index = {
             _executor.submit(self.analyze_patent, record): index
             for index, record in enumerate(patent_records)
@@ -621,6 +625,13 @@ class AnalystAgent:
             try:
                 assessment = future.result()
                 assessments_by_index[index] = assessment
+                
+                completed_count += 1
+                
+                if progress_callback:
+                    # Provide gradual feedback after each assessment
+                    msg = f"Analyzed {completed_count}/{len(patent_records)} patents"
+                    progress_callback(completed_count, len(patent_records), msg, assessment)
 
                 if assessment.intelligence_value == "HIGH":
                     logger.info(
@@ -633,6 +644,10 @@ class AnalystAgent:
                 raise
             except Exception as e:
                 logger.error(f"Failed to analyze patent: {e}")
+                completed_count += 1
+                if progress_callback:
+                    msg = f"Analyzed {completed_count}/{len(patent_records)} patents"
+                    progress_callback(completed_count, len(patent_records), msg, None)
 
         return [assessment for assessment in assessments_by_index if assessment is not None]
     
