@@ -342,20 +342,26 @@ def run_patent_search(language_codes, language_names, start_date, end_date, lang
                     keyword_progress["completed"] = int(event.get("completed", keyword_progress["completed"]))
                     keyword_progress["total"] = max(1, int(event.get("total", keyword_progress["total"])))
                     keyword = str(event.get("keyword", ""))
+                    message = str(event.get("message", ""))
                     keyword_short = f"{keyword[:32]}..." if len(keyword) > 35 else keyword
                     progress_within_language = keyword_progress["completed"] / keyword_progress["total"]
                     progress_percent = int(
                         (10 + (lang_idx * (25 / len(language_codes))))
                         + (progress_within_language * (10 / len(language_codes)))
                     )
+                    
+                    status_text = f"Searching {language_name}: "
+                    if message:
+                        status_text += message
+                    else:
+                        status_text += f"keyword {keyword_progress['completed']}/{keyword_progress['total']}"
+                        if keyword_short:
+                            status_text += f" ({keyword_short})"
+
                     render_dashboard(
                         dashboard_container,
                         _build_dashboard_snapshot(len(all_results), 0, 0, 0),
-                        (
-                            f"Searching {language_name}: keyword "
-                            f"{keyword_progress['completed']}/{keyword_progress['total']}"
-                            + (f" ({keyword_short})" if keyword_short else "")
-                        ),
+                        status_text,
                         progress_percent,
                     )
                 

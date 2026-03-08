@@ -375,7 +375,6 @@ class LensConnector:
             Search results from Lens.org with metadata about filtering
         """
         jurisdictions = [jurisdiction] if jurisdiction else None
-        _ = progress_callback
         
         # Build the initial query to find out the total available
         target_limit = limit if limit is not None else 1000
@@ -429,6 +428,15 @@ class LensConnector:
                 break
                 
             all_raw_results.extend(raw_results)
+
+            # Report progress
+            if progress_callback:
+                expected_total = min(target_limit, total_from_api) if total_from_api else target_limit
+                progress_callback({
+                    "message": f"found {len(all_raw_results)} patents...",
+                    "completed": len(all_raw_results),
+                    "total": max(1, expected_total)
+                })
             
             # If no scroll_id was returned, pagination is not supported or exhausted
             if not scroll_id:
