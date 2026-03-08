@@ -377,8 +377,16 @@ class LensConnector:
         jurisdictions = [jurisdiction] if jurisdiction else None
         
         # Build the initial query to find out the total available
-        target_limit = limit if limit is not None else 1000
-        batch_size = min(target_limit, 99)
+        target_limit = limit if limit is not None else float('inf')
+        # If the user requested an infinite/unbounded result set (limit is None),
+        # use a smaller, constant batch size so the dashboard updates more frequently
+        # and the UI shows progress (helps with long-running scrolls). Otherwise
+        # respect the requested limit but cap per-request size at 1000 as Lens allows.
+        INFINITE_BATCH_SIZE = 50
+        if target_limit == float('inf'):
+            batch_size = INFINITE_BATCH_SIZE
+        else:
+            batch_size = min(int(target_limit), 1000)
         all_raw_results = []
         total_from_api = 0
         scroll_id = None

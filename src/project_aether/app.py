@@ -238,14 +238,17 @@ def main():
         st.caption(f"Patents below {relevance_threshold}% relevance will be classified as LOW intelligence.")
 
         patents_per_language = st.slider(
-            "Patents Per Language",
+            "Patents Per Language (use maximum to indicate no limit - ∞)",
             1,
             1000,
             10,
             key="patents_per_language",
         )
+
+        # Display an infinity sign when the user selects the maximum value (treated as no limit)
+        selected_display = "∞" if patents_per_language >= 1000 else str(patents_per_language)
         if patents_per_language >= 1000:
-            st.caption("No limit will be applied to results.")
+            st.caption("No limit will be applied to results (∞).")
         else:
             st.caption(f"Limits results to {patents_per_language} patents per positive keyword per language.")
 
