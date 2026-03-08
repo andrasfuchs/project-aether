@@ -241,7 +241,7 @@ def main():
             "Patents Per Language (use maximum to indicate no limit - ∞)",
             1,
             1000,
-            10,
+            1000,
             key="patents_per_language",
         )
 
