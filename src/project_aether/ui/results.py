@@ -24,9 +24,6 @@ def render_results_tab(assessments, jurisdiction_map):
         # Format title: capitalize first letter, rest lowercase
         formatted_title = a.title.capitalize() if a.title else ""
 
-        # Format inventors: title case (each word starts with capital)
-        formatted_inventors = ", ".join([inv.title() for inv in a.inventors]) if a.inventors else "Unknown"
-
         # Determine status with original status for "Other" category
         if a.status_analysis.is_refused:
             status_display = "Refused"
@@ -47,10 +44,8 @@ def render_results_tab(assessments, jurisdiction_map):
 
         row = {
             "Record ID": a.record_id,
-            "Provider": (a.provider_name or "unknown").upper(),
             "Patent #": a.doc_number,
             "Title": formatted_title,
-            "Inventor(s)": formatted_inventors,
             "Jurisdiction": jurisdiction_name,
             "Score": f"{a.relevance_score:.1f}",
             "Status": status_display,
@@ -65,7 +60,7 @@ def render_results_tab(assessments, jurisdiction_map):
             <style>
             .results-table-header {
                 display: grid;
-                grid-template-columns: 1.2fr 1fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                grid-template-columns: 1.2fr 1.5fr 3.5fr 1.5fr 1fr 1.2fr;
                 gap: 1rem;
                 padding: 1rem;
                 background: rgba(30, 41, 59, 0.5);
@@ -81,7 +76,7 @@ def render_results_tab(assessments, jurisdiction_map):
             
             .results-table-row {
                 display: grid;
-                grid-template-columns: 1.2fr 1fr 1.5fr 2.5fr 1.8fr 1.5fr 1fr 1.2fr;
+                grid-template-columns: 1.2fr 1.5fr 3.5fr 1.5fr 1fr 1.2fr;
                 gap: 1rem;
                 padding: 1rem;
                 align-items: center;
@@ -120,10 +115,8 @@ def render_results_tab(assessments, jurisdiction_map):
         """
             <div class="results-table-header">
                 <div>Record ID</div>
-                <div>Provider</div>
                 <div>Patent #</div>
                 <div>Title</div>
-                <div>Inventor(s)</div>
                 <div>Jurisdiction</div>
                 <div>Score</div>
                 <div>Status</div>
@@ -135,8 +128,6 @@ def render_results_tab(assessments, jurisdiction_map):
     # Display table rows with hover effect
     results_container = st.container()
     with results_container:
-        col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1.2, 1, 1.5, 2.5, 1.8, 1.5, 1, 1.2])
-        
         for idx, row in df.iterrows():
             record_id = row["Record ID"]
             
@@ -144,10 +135,8 @@ def render_results_tab(assessments, jurisdiction_map):
             row_html = f"""
             <div class="results-table-row">
                 <div>{row["Record ID"]}</div>
-                <div>{row["Provider"]}</div>
                 <div>{row["Patent #"]}</div>
                 <div>{row["Title"]}</div>
-                <div>{row["Inventor(s)"]}</div>
                 <div>{row["Jurisdiction"]}</div>
                 <div style="text-align: center;">{row["Score"]}</div>
                 <div>{row["Status"]}</div>
