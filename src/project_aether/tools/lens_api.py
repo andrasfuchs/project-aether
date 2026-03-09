@@ -229,9 +229,6 @@ class LensConnector:
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR"). Defaults to "EN".
             limit: Maximum number of results to return (default: 100)
-            positive_keywords: Keywords to search for (OR logic - any match returns result)
-            negative_keywords: Keywords to exclude (AND logic - exclude if ANY match)
-            patent_status_filter: Optional list of patent statuses to filter by (e.g., ["DISCONTINUED", "WITHDRAWN"])
             
         Returns:
             JSON query payload for Lens.org API
@@ -239,6 +236,13 @@ class LensConnector:
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
+        supported_lens_languages = {"AR", "DE", "EN", "ES", "FR", "JA", "KO", "PT", "RU", "ZH"}
+        
+        if language in supported_lens_languages:
+            lens_language = language
+        else:
+            lens_language = "other"
+            
         if positive_keywords is None:
             positive_keywords = []
         if negative_keywords is None:
@@ -322,7 +326,7 @@ class LensConnector:
                     "minimum_should_match": 1 if should_clauses else 0,
                 }
             },
-            "language": language,
+            "language": lens_language,
             "include": [
                 "lens_id",
                 "jurisdiction",
