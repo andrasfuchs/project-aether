@@ -12,8 +12,7 @@ from datetime import datetime, timedelta
 import httpx
 from tenacity import (
     retry,
-    wait_exponential,
-    stop_after_attempt,
+    wait_fixed,
     retry_if_exception_type,
 )
 
@@ -144,8 +143,7 @@ class LensConnector:
         self._requests_made += 1
     
     @retry(
-        wait=wait_exponential(multiplier=1, min=4, max=10),
-        stop=stop_after_attempt(5),
+        wait=wait_fixed(15),
         retry=retry_if_exception_type(RateLimitError),
     )
     async def search_patents(self, query_payload: Dict) -> Dict:
