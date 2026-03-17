@@ -102,8 +102,8 @@ def render_sidebar(language_map):
             set_label = st.text_input("Name (optional)", key="sidebar_set_label", value=st.session_state.get("keyword_set_name", ""), placeholder="e.g. My Custom Keywords", on_change=on_keyword_name_change)
 
             include_text = st.text_area(
-                "Include terms",
-                value=", ".join(include_terms),
+                "Include terms (comma-separated synonyms per line)",
+                value="\n".join(", ".join(group) for group in include_terms) if include_terms and isinstance(include_terms[0], list) else "\n".join(", ".join([term]) for term in include_terms),
                 height=120,
                 key=f"sidebar_include_terms_{widget_version}",
             )
@@ -114,13 +114,13 @@ def render_sidebar(language_map):
                 key=f"sidebar_exclude_terms_{widget_version}",
             )
 
-            updated_include = [term.strip() for term in include_text.split(",") if term.strip()]
+            updated_include = [[t.strip() for t in line.split(",") if t.strip()] for line in include_text.split("\n") if line.strip()]
             updated_exclude = [term.strip() for term in exclude_text.split(",") if term.strip()]
             keyword_config.setdefault("English", {})["positive"] = updated_include
             keyword_config.setdefault("English", {})["negative"] = updated_exclude
             st.session_state["keyword_config"] = keyword_config
 
-            st.caption(f"Include: {len(updated_include)} terms | Exclude: {len(updated_exclude)} terms")
+            st.caption(f"Include: {sum(len(g) for g in updated_include)} terms in {len(updated_include)} groups | Exclude: {len(updated_exclude)} terms")
 
             # Determine button mode (SAVE vs UPDATE)
             mode = st.session_state.get("keyword_set_mode", "SAVE")

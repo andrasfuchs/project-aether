@@ -36,7 +36,7 @@
   "history": [
     {
       "id": "0b5c9c74bc1e",
-      "last_used": "2026-03-08T13:26:05.212442"
+      "last_used": "2026-03-17T14:49:45.236046"
     },
     {
       "id": "0beed47fc0cf",
@@ -77,8 +77,29 @@
         ],
         "source": "llm",
         "updated_at": "2026-02-07T18:42:41.530085"
+      },
+      "Spanish": {
+        "language": "Spanish",
+        "include": [
+          "chispa",
+          "descarga eléctrica",
+          "vapor de agua",
+          "medio de hidrógeno",
+          "medio hidrogenado",
+          "entorno de hidrógeno"
+        ],
+        "exclude": [
+          "bujía",
+          "sistema de encendido",
+          "motor de combustión interna",
+          "automóvil",
+          "vehículo de motor",
+          "motor"
+        ],
+        "source": "llm",
+        "updated_at": "2026-03-09T14:47:05.059957"
       }
     }
   },
-  "updated_at": "2026-03-08T13:26:05.213196"
+  "updated_at": "2026-03-17T14:49:45.236732"
 }

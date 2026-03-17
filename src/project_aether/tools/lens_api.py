@@ -211,7 +211,7 @@ class LensConnector:
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        positive_keywords: Optional[List[str]] = None,
+        positive_keywords: Optional[List[List[str]]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
@@ -220,14 +220,14 @@ class LensConnector:
         """
         Construct a flexible keyword-based patent search query.
         
-        Uses OR logic for positive keywords (match ANY positive keyword).
+        Uses AND logic between groups of positive keywords. Within each group, uses OR logic (match ANY keyword in the group).
         Uses AND logic for negative keywords (exclude results containing ANY negative keyword).
         
         Args:
             jurisdictions: List of jurisdiction codes (e.g., ["RU", "PL"]), or None for no jurisdiction filter
             start_date: Start date in ISO format (YYYY-MM-DD), or None for infinite lookback
             end_date: End date in ISO format. If None, uses today.
-            positive_keywords: Keywords to include (OR logic)
+            positive_keywords: Keywords to include (List of groups of synonyms)
             negative_keywords: Keywords to exclude (AND exclusion logic)
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR"). Defaults to "EN".
@@ -252,7 +252,13 @@ class LensConnector:
             negative_keywords = []
 
         # Clean up empty strings
-        positive_keywords = [term for term in positive_keywords if term]
+        cleaned_positive_keywords = []
+        for group in positive_keywords:
+            cleaned_group = [term for term in group if term]
+            if cleaned_group:
+                cleaned_positive_keywords.append(cleaned_group)
+        positive_keywords = cleaned_positive_keywords
+        
         negative_keywords = [term for term in negative_keywords if term]
         if not positive_keywords:
             raise LensAPIError(
@@ -291,17 +297,19 @@ class LensConnector:
                 }
             })
         
-        # Build positive keyword clauses (OR logic - match ANY)
+        # Build positive keyword clauses (AND between groups, OR within groups)
         # Search in abstract, title, and claims for better coverage
-        should_clauses = []
-        for term in positive_keywords:
-            should_clauses.append({
+        for group in positive_keywords:
+            group_should_clauses = []
+            for term in group:
+                group_should_clauses.extend([
+                    {"match_phrase": {"abstract": term}},
+                    {"match_phrase": {"biblio.invention_title.text": term}},
+                    {"match_phrase": {"claim": term}}
+                ])
+            must_clauses.append({
                 "bool": {
-                    "should": [
-                        {"match_phrase": {"abstract": term}},
-                        {"match_phrase": {"biblio.invention_title.text": term}},
-                        {"match_phrase": {"claim": term}}
-                    ]
+                    "should": group_should_clauses
                 }
             })
 
@@ -319,14 +327,12 @@ class LensConnector:
                 }
             })
 
-        # Build the query with OR for positive, AND exclusion for negative
+        # Build the query with AND between groups, OR for group members, AND exclusion for negative
         query = {
             "query": {
                 "bool": {
                     "must": must_clauses,
-                    "should": should_clauses,
                     "must_not": must_not_clauses,
-                    "minimum_should_match": 1 if should_clauses else 0,
                 }
             },
             "language": lens_language,
@@ -356,7 +362,7 @@ class LensConnector:
         jurisdiction: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        positive_keywords: Optional[List[str]] = None,
+        positive_keywords: Optional[List[List[str]]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
@@ -370,7 +376,7 @@ class LensConnector:
             jurisdiction: Single jurisdiction code (e.g., "RU"), or None for no filter (used for logging)
             start_date: Start date in ISO format, or None for infinite lookback
             end_date: End date in ISO format
-            positive_keywords: Keywords to search for (OR logic)
+            positive_keywords: Keywords to search for (List of synonym groups)
             negative_keywords: Keywords to exclude (AND logic)
             patent_status_filter: Optional patent status filter
             language: Language code for the search query (e.g., "EN", "ZH", "AR")

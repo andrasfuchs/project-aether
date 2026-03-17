@@ -69,15 +69,32 @@ def normalize_terms(terms: List[str]) -> List[str]:
     return [term.strip() for term in terms if term and term.strip()]
 
 
-def keyword_set_id(include_terms: List[str], exclude_terms: List[str]) -> str:
-    normalized = "|".join(sorted(set(normalize_terms(include_terms))))
+def normalize_include_terms(terms: List[Any]) -> List[List[str]]:
+    normalized = []
+    for item in terms:
+        if isinstance(item, list):
+            group = [t.strip() for t in item if t and t.strip()]
+            if group:
+                normalized.append(group)
+        elif isinstance(item, str):
+            t = item.strip()
+            if t:
+                normalized.append([t])
+    return normalized
+
+
+def keyword_set_id(include_terms: List[List[str]], exclude_terms: List[str]) -> str:
+    normalized_include = []
+    for group in normalize_include_terms(include_terms):
+        normalized_include.append(",".join(sorted(set(group))))
+    normalized = "|".join(sorted(normalized_include))
     normalized += "||" + "|".join(sorted(set(normalize_terms(exclude_terms))))
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
 
 
 def ensure_keyword_set(
     cache: Dict[str, Any],
-    include_terms: List[str],
+    include_terms: List[List[str]],
     exclude_terms: List[str],
     label: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -88,7 +105,7 @@ def ensure_keyword_set(
         keyword_sets[set_id] = {
             "id": set_id,
             "label": label or f"Keyword Set {set_id}",
-            "include": normalize_terms(include_terms),
+            "include": normalize_include_terms(include_terms),
             "exclude": normalize_terms(exclude_terms),
             "created_at": _utc_now(),
         }
@@ -140,7 +157,7 @@ def set_cached_translation(
     cache: Dict[str, Any],
     set_id: str,
     language: str,
-    include_terms: List[str],
+    include_terms: List[List[str]],
     exclude_terms: List[str],
     source: str,
     model: Optional[str] = None,
@@ -149,7 +166,7 @@ def set_cached_translation(
     set_translations = translations.setdefault(set_id, {})
     entry = {
         "language": language,
-        "include": normalize_terms(include_terms),
+        "include": normalize_include_terms(include_terms),
         "exclude": normalize_terms(exclude_terms),
         "source": source,
         "updated_at": _utc_now(),
@@ -162,19 +179,19 @@ def set_cached_translation(
 
 def default_translation_for_language(
     language: str,
-) -> Optional[Tuple[List[str], List[str]]]:
+) -> Optional[Tuple[List[List[str]], List[str]]]:
     _ = language
     return None
 
 
 def translate_keywords_with_llm(
-    include_terms: List[str],
+    include_terms: List[List[str]],
     exclude_terms: List[str],
     target_language: str,
     context: str,
     api_key: str,
     model: str = DEFAULT_MODEL,
-) -> Tuple[List[str], List[str]]:
+) -> Tuple[List[List[str]], List[str]]:
     if not include_terms and not exclude_terms:
         return [], []
 
@@ -184,8 +201,8 @@ def translate_keywords_with_llm(
         "Preserve acronyms (e.g., LENR, LANR), chemical symbols, "
         "and established domain terms. Keep phrases concise, natural for patent "
         "abstracts, and avoid adding commentary."
-        "Your input is a JSON object with 'include_terms' and 'exclude_terms' lists."
-        "Translate those list items and return them as a strict JSON output."
+        "Your input is a JSON object with 'include_terms' (a list of lists of synonyms) and 'exclude_terms' (a list of phrases) lists."
+        "Translate those list items and return them as a strict JSON output maintaining the same list/list of lists structure."
     )
 
     payload = {
@@ -194,7 +211,7 @@ def translate_keywords_with_llm(
         "include_terms": include_terms,
         "exclude_terms": exclude_terms,
         "output_format": {
-            "include": ["..."],
+            "include": [["..."]],
             "exclude": ["..."]
         },
     }
@@ -217,9 +234,9 @@ def translate_keywords_with_llm(
 
     # Extract text from response
     content = response.text or ""
-    
+
     data = _extract_json(content)
-    include = normalize_terms(data.get("include", include_terms))
+    include = normalize_include_terms(data.get("include", include_terms))
     exclude = normalize_terms(data.get("exclude", exclude_terms))
     return include, exclude
 
