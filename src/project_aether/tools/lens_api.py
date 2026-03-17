@@ -166,24 +166,26 @@ class LensConnector:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 import json
                 logger.debug(f"Sending query to Lens.org:\n{json.dumps(query_payload, indent=2)}")
-                
+
                 response = await client.post(
                     self.base_url,
                     headers=self.headers,
                     json=query_payload,
                 )
-                
+
                 # Handle rate limiting
                 if response.status_code == 429:
                     logger.warning("Rate limit hit (429). Retrying...")
                     raise RateLimitError("API rate limit exceeded")
-                
+
                 if response.status_code == 204:
                     # No Content (often means scroll exhausted)
                     return {"data": [], "total": 0}
 
                 # Handle other errors
                 if response.status_code != 200:
+                    # Don't throw RateLimitError on pure rate limit warnings to not failover
+                    # if the provider can still be queried later
                     error_msg = f"Lens API error {response.status_code}: {response.text}"
                     logger.error(error_msg)
                     raise LensAPIError(error_msg)
@@ -197,6 +199,9 @@ class LensConnector:
         except httpx.RequestError as e:
             logger.error(f"Request error: {e}")
             raise LensAPIError(f"Request error: {e}")
+        except RateLimitError:
+            # Re-raise so Tenacity can catch it and retry indefinitely
+            raise
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             raise LensAPIError(f"Unexpected error: {e}")
