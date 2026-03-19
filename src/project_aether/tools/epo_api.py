@@ -219,7 +219,7 @@ class EPOConnector:
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str],
-        positive_keywords: List[str],
+        positive_keywords: List[Any],
         negative_keywords: List[str],
         *,
         max_positive_terms: Optional[int] = None,
@@ -241,7 +241,7 @@ class EPOConnector:
             jurisdictions: Optional list of jurisdiction codes.
             start_date: Optional start date in YYYY-MM-DD.
             end_date: Optional end date in YYYY-MM-DD.
-            positive_keywords: Include terms.
+            positive_keywords: Include terms. Handled gracefully if list of strings or list of lists of strings (flattened).
             negative_keywords: Exclude terms.
 
         Returns:
@@ -249,8 +249,15 @@ class EPOConnector:
         """
         clauses: List[str] = []
 
+        flat_positive = []
+        for item in positive_keywords:
+            if isinstance(item, list):
+                flat_positive.extend(item)
+            else:
+                flat_positive.append(item)
+
         positive_terms = self._clip_terms(
-            positive_keywords,
+            flat_positive,
             max_positive_terms,
             max_total_tokens=max_total_tokens,
         )
@@ -302,7 +309,7 @@ class EPOConnector:
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str],
-        positive_keywords: List[str],
+        positive_keywords: List[Any],
         max_positive_terms: int = MAX_PRIMARY_TERMS,
         max_total_tokens: int = MAX_PRIMARY_TOKEN_BUDGET,
         include_date: bool = True,
@@ -315,7 +322,7 @@ class EPOConnector:
             jurisdictions: Optional list of jurisdiction codes.
             start_date: Optional start date in YYYY-MM-DD.
             end_date: Optional end date in YYYY-MM-DD.
-            positive_keywords: Include terms.
+            positive_keywords: Include terms. Handled gracefully if list of strings or list of lists of strings (flattened).
             max_positive_terms: Max number of positive terms used.
             max_total_tokens: Max total token budget across terms.
             include_date: Whether to include publication date range clause.
@@ -325,8 +332,15 @@ class EPOConnector:
         """
         clauses: List[str] = []
 
+        flat_positive = []
+        for item in positive_keywords:
+            if isinstance(item, list):
+                flat_positive.extend(item)
+            else:
+                flat_positive.append(item)
+
         positive_terms = self._clip_terms(
-            positive_keywords,
+            flat_positive,
             max_positive_terms,
             max_total_tokens=max_total_tokens,
         )
@@ -1175,7 +1189,7 @@ class EPOConnector:
         jurisdictions: Optional[List[str]],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        positive_keywords: Optional[List[str]] = None,
+        positive_keywords: Optional[List[Any]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",
@@ -1300,7 +1314,7 @@ class EPOConnector:
         jurisdiction: Optional[str],
         start_date: Optional[str],
         end_date: Optional[str] = None,
-        positive_keywords: Optional[List[str]] = None,
+        positive_keywords: Optional[List[Any]] = None,
         negative_keywords: Optional[List[str]] = None,
         patent_status_filter: Optional[List[str]] = None,
         language: str = "EN",

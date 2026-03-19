@@ -1,11 +1,11 @@
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
-from project_aether.core.keyword_translation import normalize_terms
+from project_aether.core.keyword_translation import normalize_terms, normalize_include_terms
 
 
-def get_active_english_keywords(kw_config: dict) -> tuple[List[str], List[str]]:
+def get_active_english_keywords(kw_config: dict) -> tuple[List[List[str]], List[str]]:
     english = kw_config.get("English", {})
-    include_terms = normalize_terms(english.get("positive", []))
+    include_terms = normalize_include_terms(english.get("positive", []))
     exclude_terms = normalize_terms(english.get("negative", []))
     return include_terms, exclude_terms
 

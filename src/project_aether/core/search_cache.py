@@ -83,7 +83,7 @@ def _make_cache_key(
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
-    positive_keywords: Optional[List[str]],
+    positive_keywords: Optional[List[Any]],
     negative_keywords: Optional[List[str]],
     patent_status_filter: Optional[List[str]],
     language: str,
@@ -98,7 +98,7 @@ def _make_cache_key(
         jurisdiction: Single jurisdiction code or None.
         start_date: Start date in YYYY-MM-DD or None.
         end_date: End date in YYYY-MM-DD or None.
-        positive_keywords: List of include terms or None.
+        positive_keywords: List of include terms (gracefully handles list of strings or list of lists) or None.
         negative_keywords: List of exclude terms or None.
         patent_status_filter: List of status filters or None.
         language: Language code (e.g., "EN", "ZH").
@@ -108,7 +108,15 @@ def _make_cache_key(
         SHA-256 hash string as cache key.
     """
     # Normalize lists to sorted tuples for consistent hashing
-    pos_kw = tuple(sorted(positive_keywords)) if positive_keywords else ()
+    pos_kw_normalized = []
+    if positive_keywords:
+        for item in positive_keywords:
+            if isinstance(item, list):
+                pos_kw_normalized.append(tuple(sorted(item)))
+            else:
+                pos_kw_normalized.append(str(item))
+    pos_kw = tuple(sorted(pos_kw_normalized))
+    
     neg_kw = tuple(sorted(negative_keywords)) if negative_keywords else ()
     status = tuple(sorted(patent_status_filter)) if patent_status_filter else ()
     
@@ -154,7 +162,7 @@ def get_cached_search_results(
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
-    positive_keywords: Optional[List[str]],
+    positive_keywords: Optional[List[Any]],
     negative_keywords: Optional[List[str]],
     patent_status_filter: Optional[List[str]],
     language: str,
@@ -211,7 +219,7 @@ def set_cached_search_results(
     jurisdiction: Optional[str],
     start_date: Optional[str],
     end_date: Optional[str],
-    positive_keywords: Optional[List[str]],
+    positive_keywords: Optional[List[Any]],
     negative_keywords: Optional[List[str]],
     patent_status_filter: Optional[List[str]],
     language: str,
