@@ -112,7 +112,7 @@ LANGUAGE_MAP = {
     "Czech": "CS",
     "Dutch": "NL",
     "Arabic": "AR",
-    "Other": "Other",
+    "Hungarian": "HU",
 }
 
 # Page configuration
