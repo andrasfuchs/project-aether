@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Iterable
 
 
-DEFAULT_SCORING_MODEL = "gemini-3.1-flash-lite-preview"
+DEFAULT_SCORING_MODEL = "gemini-flash-latest"
 MAX_CONCURRENT_SCORING = 20
 
 DEFAULT_SCORING_SYSTEM_PROMPT = (

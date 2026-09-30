@@ -19,7 +19,7 @@ from project_aether.core.config import get_config
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-flash-latest"
 MAX_CONCURRENT_TRANSLATIONS = 10
 
 # Global thread pool for all translations (shared across all patents)

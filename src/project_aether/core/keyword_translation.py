@@ -18,7 +18,7 @@ from project_aether.core.config import get_config
 
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "gemini-flash-latest"
 
 
 def _utc_now() -> str:
