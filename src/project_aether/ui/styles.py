@@ -5,175 +5,225 @@ def inject_global_styles() -> None:
     st.markdown(
         """
 <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
-    
-    /* Base Styles */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
     }
-    
-    /* Global Background Override (if needed beyond config) */
-    @keyframes gradient-shift {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
+
+    /* Full-width responsive main container */
+    .stMainBlockContainer, .block-container {
+        max-width: 1440px !important;
+        padding-top: 1.5rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+        padding-bottom: 2.5rem !important;
     }
 
     .stApp {
-        background-color: #0F172A; /* Slate 900 */
-        background-image: 
-            radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-            radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-            radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
-        background-size: 200% 200%;
-        animation: gradient-shift 15s ease infinite;
-        transition: background-image 0.5s ease;
+        background-color: #0F172A;
+        background-image:
+            radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+            radial-gradient(at 50% 0%, hsla(225, 39%, 24%, 1) 0, transparent 50%),
+            radial-gradient(at 100% 0%, hsla(200, 45%, 18%, 1) 0, transparent 50%);
     }
 
-    /* Subtle change on hover */
-    .stApp:hover {
-        background-image: 
-            radial-gradient(at 10% 10%, hsla(253,16%,10%,1) 0, transparent 50%), 
-            radial-gradient(at 60% 10%, hsla(225,39%,35%,1) 0, transparent 50%), 
-            radial-gradient(at 90% 10%, hsla(339,49%,35%,1) 0, transparent 50%);
-    }
-
-    /* Custom Header Styles */
+    /* Header */
     .header-container {
-        padding: 0 0 1rem 0;
+        padding: 0 0 0.75rem 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        margin-bottom: 2rem;
+        margin-bottom: 1.25rem;
     }
-    
+
     .main-title {
-        font-size: 3rem;
+        font-size: 2.25rem;
         font-weight: 700;
         background: linear-gradient(90deg, #00B4D8 0%, #90E0EF 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
-    }
-    
-    .subtitle {
-        font-size: 1.1rem;
-        color: #94A3B8; /* Slate 400 */
-        font-weight: 300;
-        letter-spacing: 0.05em;
+        line-height: 1.2;
+        margin-bottom: 0.25rem;
     }
 
-    /* Card Styling */
+    .subtitle {
+        font-size: 0.95rem;
+        color: #94A3B8;
+        font-weight: 400;
+        letter-spacing: 0.03em;
+    }
+
+    /* Glass Cards (inset accent avoids corner tapering/hooks) */
     .glass-card {
-        background: rgba(30, 41, 59, 0.7); /* Slate 800 with opacity */
+        background: rgba(30, 41, 59, 0.75);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    
-    .glass-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 180, 216, 0.2);
-        border-color: rgba(0, 180, 216, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        padding: 1.15rem 1.35rem;
+        margin-bottom: 0.85rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
-    /* Metric Styling inside Cards */
+    .glass-card:hover {
+        border-color: rgba(0, 180, 216, 0.45);
+        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.45);
+    }
+
+    .metric-label {
+        font-size: 0.78rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94A3B8;
+        margin-bottom: 0.35rem;
+    }
+
     .metric-value {
-        font-size: 2.2rem;
+        font-size: 2rem;
         font-weight: 700;
         color: #F8FAFC;
+        line-height: 1.15;
     }
-    
-    .metric-label {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
+
+    .metric-subtext {
         color: #94A3B8;
-        margin-bottom: 0.5rem;
+        font-size: 0.8rem;
+        margin-top: 0.35rem;
     }
 
-    /* Status Indicators */
-    .status-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-    
-    .status-ok { background: rgba(16, 185, 129, 0.1); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.2); }
-    .status-err { background: rgba(239, 68, 68, 0.1); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.2); }
-    .status-warn { background: rgba(245, 158, 11, 0.1); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.2); }
-
-    /* Custom Button Overrides */
-    div.stButton > button {
+    /* Readable dark abstract container */
+    .abstract-box {
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.2);
         border-radius: 8px;
-        font-weight: 600;
-        height: auto; /* Allow height to adjust */
-        padding: 0.8rem 2.5rem; /* Increased spacing */
-        text-transform: uppercase;
-        letter-spacing: 0.15em; /* Increased spacing */
-        border: 1px solid rgba(255, 255, 255, 0.1); /* Subtle border */
-        background-color: rgba(30, 41, 59, 0.5); /* Base color */
-        color: #F8FAFC;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* Smoother transition */
-        margin: 1rem 0; /* Add outer margin */
+        padding: 1rem 1.25rem;
+        color: #E2E8F0;
+        font-size: 0.94rem;
+        line-height: 1.65;
+        margin-bottom: 0.75rem;
     }
 
-    div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0, 180, 216, 0.3), 0 4px 6px -2px rgba(0, 180, 216, 0.1);
-        background-color: rgba(0, 180, 216, 0.2); /* Color change on hover */
+    /* Inline tag pills that never split mid-tag */
+    .tag-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin: 0.35rem 0 0.75rem 0;
+    }
+
+    .tag-pill {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #E2E8F0;
+        background: rgba(0, 180, 216, 0.14);
+        border: 1px solid rgba(0, 180, 216, 0.3);
+        white-space: nowrap;
+    }
+
+    /* Status Badges */
+    .status-badge {
+        display: block;
+        width: fit-content;
+        padding: 0.28rem 0.75rem;
+        margin-bottom: 0.45rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .status-ok { background: rgba(16, 185, 129, 0.12); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.28); }
+    .status-err { background: rgba(239, 68, 68, 0.12); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.28); }
+    .status-warn { background: rgba(245, 158, 11, 0.12); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.28); }
+
+    /* Unified compact Button & Download Button styling */
+    div.stButton > button,
+    div.stDownloadButton > button {
+        border-radius: 8px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        padding: 0.45rem 0.95rem;
+        min-height: 2.4rem;
+        margin: 0;
+        text-transform: none;
+        letter-spacing: 0.01em;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background-color: rgba(30, 41, 59, 0.7);
+        color: #F8FAFC;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+    }
+
+    div.stButton > button[kind="primary"] {
+        background-color: #0096C7;
         border-color: #00B4D8;
         color: #FFFFFF;
-        letter-spacing: 0.2em; /* Expand text slightly on hover */
     }
 
-    /* Tab Styling */
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #00B4D8;
+        border-color: #90E0EF;
+        color: #FFFFFF;
+    }
+
+    div.stButton > button:hover,
+    div.stDownloadButton > button:hover {
+        border-color: #00B4D8;
+        background-color: rgba(0, 180, 216, 0.18);
+        color: #FFFFFF;
+    }
+
+    /* Tabs: crisp hierarchy (active = bright white + cyan accent, inactive = muted slate) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 1rem;
+        gap: 0.5rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        margin-bottom: 1rem;
     }
 
     .stTabs [data-baseweb="tab"] {
-        height: 3rem;
-        border-radius: 10% 10% 0% 0%;
-        background-color: rgba(30, 41, 59, 0.5);
-        color: #94A3B8;
-        border: 1px solid transparent;        
+        height: 2.6rem;
+        padding: 0 1rem;
+        border-radius: 8px 8px 0 0;
+        background-color: transparent;
+        color: #94A3B8 !important;
+        border: 1px solid transparent;
+        font-weight: 500;
     }
-            
+
     .stTabs [data-baseweb="tab"] p {
-        margin: 20px;
+        margin: 0;
+        font-size: 0.92rem;
     }
 
     .stTabs [data-baseweb="tab"]:hover {
-        background-color: rgba(30, 41, 59, 0.8);
-        color: #F8FAFC;
+        background-color: rgba(30, 41, 59, 0.65);
+        color: #E2E8F0 !important;
     }
 
     .stTabs [aria-selected="true"] {
-        background-color: rgba(0, 180, 216, 0.1) !important;
-        color: #00B4D8 !important;
-        border: 1px solid rgba(0, 180, 216, 0.2) !important;
-    }
-    
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #020617; /* Very dark slate */
-        border-right: 1px solid rgba(255,255,255, 0.05);
-    }
-    
-    /* Code block styling */
-    code {
-        color: #F472B6;
-        background: rgba(0,0,0,0.3);
+        background-color: rgba(0, 180, 216, 0.14) !important;
+        color: #FFFFFF !important;
+        font-weight: 600;
+        border: 1px solid rgba(0, 180, 216, 0.35) !important;
+        border-bottom: 2px solid #00B4D8 !important;
     }
 
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background-color: #020617;
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Inline code */
+    code {
+        color: #7DD3FC;
+        background: rgba(15, 23, 42, 0.6);
+        padding: 0.12rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.85em;
+    }
 </style>
 """,
         unsafe_allow_html=True,

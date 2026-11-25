@@ -7,22 +7,26 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-from google import genai
-from google.genai import types
+from pydantic import BaseModel
 
 from project_aether.core.config import get_config
-
+from project_aether.core.llm import DEFAULT_LLM_MODEL, generate_content
 
 CACHE_VERSION = 1
-DEFAULT_MODEL = "gemini-flash-latest"
+DEFAULT_MODEL = DEFAULT_LLM_MODEL
+
+
+class KeywordTranslationResponse(BaseModel):
+    include: list[list[str]]
+    exclude: list[str]
 
 
 def _utc_now() -> str:
-    return datetime.utcnow().isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def get_cache_path() -> Path:
@@ -30,7 +34,7 @@ def get_cache_path() -> Path:
     return config.database_path.parent / "keyword_cache.json"
 
 
-def _empty_cache() -> Dict[str, Any]:
+def _empty_cache() -> dict[str, Any]:
     return {
         "version": CACHE_VERSION,
         "keyword_sets": {},
@@ -40,7 +44,7 @@ def _empty_cache() -> Dict[str, Any]:
     }
 
 
-def load_keyword_cache(path: Optional[Path] = None) -> Dict[str, Any]:
+def load_keyword_cache(path: Path | None = None) -> dict[str, Any]:
     cache_path = path or get_cache_path()
     if not cache_path.exists():
         return _empty_cache()
@@ -57,7 +61,7 @@ def load_keyword_cache(path: Optional[Path] = None) -> Dict[str, Any]:
         return _empty_cache()
 
 
-def save_keyword_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> None:
+def save_keyword_cache(cache: dict[str, Any], path: Path | None = None) -> None:
     cache_path = path or get_cache_path()
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache["updated_at"] = _utc_now()
@@ -65,15 +69,22 @@ def save_keyword_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> No
         json.dump(cache, handle, indent=2, ensure_ascii=False)
 
 
-def normalize_terms(terms: List[str]) -> List[str]:
-    return [term.strip() for term in terms if term and term.strip()]
+def normalize_terms(terms: list[str]) -> list[str]:
+    seen = set()
+    output: list[str] = []
+    for term in terms:
+        cleaned = (term or "").strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            output.append(cleaned)
+    return output
 
 
-def normalize_include_terms(terms: List[Any]) -> List[List[str]]:
-    normalized = []
+def normalize_include_terms(terms: list[Any]) -> list[list[str]]:
+    normalized: list[list[str]] = []
     for item in terms:
         if isinstance(item, list):
-            group = [t.strip() for t in item if t and t.strip()]
+            group = normalize_terms([str(t) for t in item])
             if group:
                 normalized.append(group)
         elif isinstance(item, str):
@@ -83,7 +94,7 @@ def normalize_include_terms(terms: List[Any]) -> List[List[str]]:
     return normalized
 
 
-def keyword_set_id(include_terms: List[List[str]], exclude_terms: List[str]) -> str:
+def keyword_set_id(include_terms: list[list[str]], exclude_terms: list[str]) -> str:
     normalized_include = []
     for group in normalize_include_terms(include_terms):
         normalized_include.append(",".join(sorted(set(group))))
@@ -93,11 +104,11 @@ def keyword_set_id(include_terms: List[List[str]], exclude_terms: List[str]) -> 
 
 
 def ensure_keyword_set(
-    cache: Dict[str, Any],
-    include_terms: List[List[str]],
-    exclude_terms: List[str],
-    label: Optional[str] = None,
-) -> Dict[str, Any]:
+    cache: dict[str, Any],
+    include_terms: list[list[str]],
+    exclude_terms: list[str],
+    label: str | None = None,
+) -> dict[str, Any]:
     set_id = keyword_set_id(include_terms, exclude_terms)
     keyword_sets = cache.setdefault("keyword_sets", {})
 
@@ -114,14 +125,14 @@ def ensure_keyword_set(
     return keyword_sets[set_id]
 
 
-def _touch_history(cache: Dict[str, Any], set_id: str, max_items: int = 25) -> None:
+def _touch_history(cache: dict[str, Any], set_id: str, max_items: int = 25) -> None:
     history = cache.setdefault("history", [])
     history = [entry for entry in history if entry.get("id") != set_id]
     history.insert(0, {"id": set_id, "last_used": _utc_now()})
     cache["history"] = history[:max_items]
 
 
-def get_history_entries(cache: Dict[str, Any]) -> List[Dict[str, Any]]:
+def get_history_entries(cache: dict[str, Any]) -> list[dict[str, Any]]:
     keyword_sets = cache.get("keyword_sets", {})
     entries = []
     for item in cache.get("history", []):
@@ -133,7 +144,7 @@ def get_history_entries(cache: Dict[str, Any]) -> List[Dict[str, Any]]:
     return entries
 
 
-def delete_keyword_set(cache: Dict[str, Any], set_id: str) -> None:
+def delete_keyword_set(cache: dict[str, Any], set_id: str) -> None:
     cache.get("keyword_sets", {}).pop(set_id, None)
     cache["translations"] = {
         key: value
@@ -146,22 +157,22 @@ def delete_keyword_set(cache: Dict[str, Any], set_id: str) -> None:
 
 
 def get_cached_translation(
-    cache: Dict[str, Any],
+    cache: dict[str, Any],
     set_id: str,
     language: str,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     return cache.get("translations", {}).get(set_id, {}).get(language)
 
 
 def set_cached_translation(
-    cache: Dict[str, Any],
+    cache: dict[str, Any],
     set_id: str,
     language: str,
-    include_terms: List[List[str]],
-    exclude_terms: List[str],
+    include_terms: list[list[str]],
+    exclude_terms: list[str],
     source: str,
-    model: Optional[str] = None,
-) -> Dict[str, Any]:
+    model: str | None = None,
+) -> dict[str, Any]:
     translations = cache.setdefault("translations", {})
     set_translations = translations.setdefault(set_id, {})
     entry = {
@@ -177,32 +188,29 @@ def set_cached_translation(
     return entry
 
 
-def default_translation_for_language(
-    language: str,
-) -> Optional[Tuple[List[List[str]], List[str]]]:
-    _ = language
-    return None
-
-
 def translate_keywords_with_llm(
-    include_terms: List[List[str]],
-    exclude_terms: List[str],
+    include_terms: list[list[str]],
+    exclude_terms: list[str],
     target_language: str,
     context: str,
     api_key: str,
-    model: str = DEFAULT_MODEL,
-) -> Tuple[List[List[str]], List[str]]:
+    model: str | None = None,
+    thinking_level: str | None = None,
+) -> tuple[list[list[str]], list[str]]:
     if not include_terms and not exclude_terms:
         return [], []
 
+    config = get_config()
+    chosen_model = model or config.llm_keyword_model
+    chosen_thinking = thinking_level or config.llm_keyword_thinking_level
+
     system_prompt = (
-        "You are translating short patent search keyword phrases for a technical "
-        "prior-art query to " + target_language + ". "
+        f"You are translating short patent search keyword phrases for a technical "
+        f"prior-art query to {target_language}. "
         "Preserve acronyms (e.g., LENR, LANR), chemical symbols, "
         "and established domain terms. Keep phrases concise, natural for patent "
-        "abstracts, and avoid adding commentary."
-        "Your input is a JSON object with 'include_terms' (a list of lists of synonyms) and 'exclude_terms' (a list of phrases) lists."
-        "Translate those list items and return them as a strict JSON output maintaining the same list/list of lists structure."
+        "titles and abstracts, and avoid duplicate translations within a synonym group. "
+        "Maintain the exact list-of-lists structure for `include` and list structure for `exclude`."
     )
 
     payload = {
@@ -210,44 +218,32 @@ def translate_keywords_with_llm(
         "context": context,
         "include_terms": include_terms,
         "exclude_terms": exclude_terms,
-        "output_format": {
-            "include": [["..."]],
-            "exclude": ["..."]
-        },
     }
 
-    # Initialize Google GenAI client
-    client = genai.Client(api_key=api_key)
-    
-    # Generate content with Gemini using proper configuration
-    response = client.models.generate_content(
-        model=model,
+    response = generate_content(
+        api_key=api_key,
+        model=chosen_model,
         contents=json.dumps(payload, ensure_ascii=False),
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=1.0,  # Recommended default for Gemini 3 models
-            thinking_config=types.ThinkingConfig(
-                thinking_level=types.ThinkingLevel.LOW
-            )
-        )
+        system_instruction=system_prompt,
+        temperature=0.2,
+        thinking_level=chosen_thinking,
+        response_schema=KeywordTranslationResponse,
+        response_mime_type="application/json",
     )
 
-    # Extract text from response
-    content = response.text or ""
-
-    data = _extract_json(content)
+    data = _extract_json(response.text or "")
     include = normalize_include_terms(data.get("include", include_terms))
     exclude = normalize_terms(data.get("exclude", exclude_terms))
     return include, exclude
 
 
-def _extract_json(text: str) -> Dict[str, Any]:
+def _extract_json(text: str) -> dict[str, Any]:
     if not isinstance(text, str):
         return {}
-    
+
     try:
         return json.loads(text)
-    except Exception:
+    except json.JSONDecodeError:
         pass
 
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -257,74 +253,3 @@ def _extract_json(text: str) -> Dict[str, Any]:
         except Exception:
             return {}
     return {}
-
-
-# Backward compatibility wrappers for abstract translation functions
-# These now delegate to the general translation_service module
-from project_aether.core.translation_service import (
-    load_translation_cache as _load_translation_cache,
-    save_translation_cache as _save_translation_cache,
-    get_cached_translation as _get_translation,
-    set_cached_translation as _set_translation,
-    translate_text as _translate_text,
-)
-
-
-def get_abstract_cache_path() -> Path:
-    """Deprecated: Use translation_service.get_translation_cache_path() instead."""
-    config = get_config()
-    return config.database_path.parent / "abstract_cache.json"
-
-
-def load_abstract_cache(path: Optional[Path] = None) -> Dict[str, Any]:
-    """
-    Deprecated: Use translation_service.load_translation_cache() instead.
-    Loads from the new translation_cache.json for consistency.
-    """
-    return _load_translation_cache()
-
-
-def save_abstract_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> None:
-    """
-    Deprecated: Use translation_service.save_translation_cache() instead.
-    """
-    _save_translation_cache(cache)
-
-
-def get_cached_abstract_translation(
-    cache: Dict[str, Any],
-    lens_id: str,
-    target_language: str,
-) -> Optional[str]:
-    """
-    Deprecated: Use translation_service.get_cached_translation() instead.
-    Wrapper that maintains old API (assumes source language is English).
-    """
-    return _get_translation(cache, lens_id, "English", target_language)
-
-
-def set_cached_abstract_translation(
-    cache: Dict[str, Any],
-    lens_id: str,
-    target_language: str,
-    translated_text: str,
-    model: str = DEFAULT_MODEL,
-) -> None:
-    """
-    Deprecated: Use translation_service.set_cached_translation() instead.
-    Wrapper that maintains old API (assumes source language is English).
-    """
-    _set_translation(cache, lens_id, "English", target_language, translated_text, model)
-
-
-def translate_text_with_llm(
-    text: str,
-    target_language: str,
-    api_key: str,
-    model: str = DEFAULT_MODEL,
-) -> str:
-    """
-    Deprecated: Use translation_service.translate_text() instead.
-    Wrapper that maintains old API (assumes source language is English).
-    """
-    return _translate_text(text, "English", target_language, api_key, model)

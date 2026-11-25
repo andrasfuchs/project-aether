@@ -6,8 +6,7 @@ import logging
 import threading
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Deque
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -25,7 +24,7 @@ class InMemoryLogHandler(logging.Handler):
 
     def __init__(self, max_entries: int = 5000, level: int = logging.DEBUG) -> None:
         super().__init__(level=level)
-        self._entries: Deque[LogEntry] = deque(maxlen=max_entries)
+        self._entries: deque[LogEntry] = deque(maxlen=max_entries)
         self._lock = threading.Lock()
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -33,7 +32,7 @@ class InMemoryLogHandler(logging.Handler):
             formatted = self.format(record)
             message = record.getMessage()
             entry = LogEntry(
-                timestamp=datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+                timestamp=datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
                 level=record.levelname,
                 levelno=record.levelno,
                 logger_name=record.name,

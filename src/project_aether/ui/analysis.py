@@ -1,29 +1,65 @@
-import streamlit as st
+"""
+Detailed Analysis tab: inspect patent metadata, on-demand English/Hungarian
+translation (disk-cached), Deep Technical Brief, and George's 0-100 review form.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import html
 import os
-from project_aether.core.translation_service import (
-    translate_text,
-    load_translation_cache,
-    save_translation_cache,
-    get_cached_translation,
-    set_cached_translation,
+from typing import Any
+
+import streamlit as st
+
+from project_aether.core.config import get_config
+from project_aether.core.llm_advisor import (
+    delete_patent_pdf,
+    fetch_google_patents_pdf,
+    generate_technical_brief,
+    load_patent_pdf,
+    save_patent_pdf,
 )
+from project_aether.core.reviews import delete_review, get_review, save_review
+from project_aether.core.translation_service import (
+    get_cached_translation,
+    load_translation_cache,
+    set_cached_translation,
+    translate_text,
+)
+from project_aether.tools.lens_api import LensConnector
 
 
-def render_deep_dive(assessment):
+def _extract_text_field(value: Any) -> str:
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict) and item.get("text"):
+                parts.append(str(item["text"]))
+            elif item:
+                parts.append(str(item))
+        return "\n\n".join(parts)
+    if isinstance(value, dict):
+        return str(value.get("text") or "")
+    return str(value or "")
+
+
+def _extract_claims_text(patent_data: dict[str, Any]) -> str:
+    return _extract_text_field(patent_data.get("claims_en") or patent_data.get("claims"))
+
+
+def render_deep_dive(assessment) -> None:
     """Render a detailed view of a patent assessment."""
+    config = get_config()
+    api_key = config.google_api_key or os.getenv("GEMINI_API_KEY", "")
 
-    # Header logic
     color = "#94A3B8"
     if assessment.intelligence_value == "HIGH":
         color = "#EF4444"
     elif assessment.intelligence_value == "MEDIUM":
         color = "#F59E0B"
 
-    provider_url = assessment.provider_record_url
-    legal_history_url = assessment.legal_history_url if hasattr(assessment, 'legal_history_url') else None
-    
-    # Get the original patent record to check for English translation
-    patent_data = next(
+    patent_data: dict[str, Any] = next(
         (
             p
             for p in st.session_state.get("all_raw_results", [])
@@ -31,35 +67,49 @@ def render_deep_dive(assessment):
         ),
         {},
     )
-    english_title = patent_data.get("title_en")
-    
-    # Build title section: show English translation in brackets if it exists
-    # Format title: capitalize first letter, rest lowercase (matching the results view)
-    formatted_title = assessment.title.capitalize() if assessment.title else ""
-    formatted_english_title = english_title.capitalize() if english_title else ""
-    
-    title_html = f"<h2>{formatted_title}</h2>"
-    if english_title:
-        title_html += f"<p style=\"font-size: 0.95rem; color: #94A3B8; margin-top: -10px;\">({formatted_english_title})</p>"
+
+    provider_url = assessment.provider_record_url
+    legal_history_url = getattr(assessment, "legal_history_url", None) or patent_data.get(
+        "legal_history_url"
+    )
+    english_title = getattr(assessment, "title_en", None) or patent_data.get("title_en")
+
+    safe_title = html.escape(assessment.title or "Untitled")
+    title_html = f"<h2>{safe_title}</h2>"
+    if english_title and english_title.strip().lower() != (assessment.title or "").strip().lower():
+        title_html += (
+            f'<p style="font-size: 0.98rem; color: #94A3B8; margin-top: -10px;">'
+            f"({html.escape(english_title)})</p>"
+        )
+
+    inventors_str = ", ".join(assessment.inventors) if assessment.inventors else "Unknown"
+    applicants = getattr(assessment, "applicants", None) or []
+    applicants_str = ", ".join(applicants) if applicants else "—"
+    pub_date = getattr(assessment, "date_published", None) or patent_data.get("date_published") or "Unknown"
 
     st.markdown(
         f"""
-    <div class="glass-card" style="border-top: 4px solid {color}">
+    <div class="glass-card" style="box-shadow: inset 0 3px 0 0 {color};">
         {title_html}
-        <p>by {assessment.inventors}</p>
-        <p style="font-family: monospace; color: {color}; font-size: 1.2rem;">
-            {assessment.record_id} | {assessment.jurisdiction} | {assessment.doc_number}
+        <p style="color: #CBD5E1; font-size: 0.9rem; margin: 0.35rem 0;">
+            <strong>Inventors:</strong> {html.escape(inventors_str)} &nbsp;|&nbsp;
+            <strong>Applicants:</strong> {html.escape(applicants_str)} &nbsp;|&nbsp;
+            <strong>Published:</strong> {html.escape(str(pub_date))}
         </p>
-        <div style="margin-top: 10px; display: flex; gap: 15px;">
+        <p style="font-family: monospace; color: #94A3B8; font-size: 0.9rem; margin: 0.35rem 0;">
+            {html.escape(assessment.record_id)} &nbsp;·&nbsp; {html.escape(assessment.jurisdiction)} {html.escape(assessment.doc_number)}
+            {f" &nbsp;·&nbsp; <span style='color: #7DD3FC;'>{html.escape(assessment.domain_category)}</span>" if getattr(assessment, "domain_category", "") else ""}
+        </p>
+        <div style="margin-top: 0.5rem; display: flex; gap: 1rem; font-size: 0.88rem;">
             {
-                f'<a href="{provider_url}" target="_blank" style="color: #00B4D8; text-decoration: none;">View on Provider</a>'
+                f'<a href="{html.escape(provider_url)}" target="_blank" style="color: #38BDF8; text-decoration: none;">View on Provider ↗</a>'
                 if provider_url
-                else '<span style="color: #94A3B8;">No external patent link available.</span>'
+                else '<span style="color: #64748B;">No external patent link available.</span>'
             }
             {
-                f'<a href="{legal_history_url}" target="_blank" style="color: #10B981; text-decoration: none;">Legal History</a>'
+                f'<a href="{html.escape(legal_history_url)}" target="_blank" style="color: #34D399; text-decoration: none;">Legal History ↗</a>'
                 if legal_history_url
-                else '<span style="color: #94A3B8;">No legal history link available.</span>'
+                else ''
             }
         </div>
     </div>
@@ -71,20 +121,16 @@ def render_deep_dive(assessment):
 
     with col1:
         st.markdown("#### Abstract")
-        patent_data = next(
-            (
-                p
-                for p in st.session_state.get("all_raw_results", [])
-                if p.get("record_id") == assessment.record_id
-            ),
-            {},
+        abstract_data = patent_data.get("abstract", None)
+        translation_cache = load_translation_cache()
+        trans_model = st.session_state.get("llm_translation_model", config.llm_translation_model)
+        trans_thinking = st.session_state.get(
+            "llm_translation_thinking_level", config.llm_translation_thinking_level
         )
 
-        # Handle abstract with multiple languages
-        abstract_data = patent_data.get("abstract", None)
+        primary_abstract_text = ""
 
         if abstract_data:
-            # If abstract is a list of language objects
             if isinstance(abstract_data, list):
                 lang_map = {
                     "en": "English",
@@ -99,163 +145,346 @@ def render_deep_dive(assessment):
                     "ko": "Korean",
                     "hu": "Hungarian",
                     "ar": "Arabic",
+                    "pl": "Polish",
+                    "ro": "Romanian",
+                    "cs": "Czech",
+                    "nl": "Dutch",
+                    "sv": "Swedish",
+                    "no": "Norwegian",
+                    "fi": "Finnish",
                 }
-
-                # Build dictionary of available languages
-                available_abstracts = {}
+                available_abstracts: dict[str, str] = {}
                 for abstract_obj in abstract_data:
-                    lang_code = abstract_obj.get("lang", "unknown").lower()
+                    if not isinstance(abstract_obj, dict):
+                        continue
+                    lang_code = str(abstract_obj.get("lang", "unknown")).lower()
                     lang_name = lang_map.get(lang_code, lang_code.upper())
-                    available_abstracts[lang_name] = abstract_obj.get("text", "")
+                    if abstract_obj.get("text"):
+                        available_abstracts[lang_name] = abstract_obj.get("text", "")
 
-                # Check if abstract_en exists (auto-translated during search)
+                if available_abstracts:
+                    primary_abstract_text = next(iter(available_abstracts.values()))
+
                 abstract_en = patent_data.get("abstract_en")
                 if abstract_en and "English" not in available_abstracts:
-                    # Add auto-translated English abstract directly
                     available_abstracts["English (auto-translated)"] = abstract_en
 
-                # List of preferred languages to show
-                preferred_langs = ["English", "English (auto-translated)", "Hungarian", "French", "German", "Spanish", "Chinese", "Russian"]
-
-                # Create tabs for available languages
-                tab_labels = []
-                tab_contents = []
+                preferred_langs = [
+                    "English",
+                    "English (auto-translated)",
+                    "Hungarian",
+                    "German",
+                    "French",
+                    "Spanish",
+                    "Chinese",
+                    "Russian",
+                ]
+                tab_labels: list[str] = []
+                tab_contents: list[Any] = []
 
                 for lang in preferred_langs:
                     if lang in available_abstracts:
                         tab_labels.append(lang)
                         tab_contents.append(available_abstracts[lang])
 
-                # Add any other languages not in the preferred list
                 for lang in sorted(available_abstracts.keys()):
                     if lang not in preferred_langs:
                         tab_labels.append(lang)
                         tab_contents.append(available_abstracts[lang])
-                
-                # Only add English auto-translation tab if English is not available and abstract_en doesn't exist
-                # (This handles on-demand translation from other languages)
+
                 if "English" not in available_abstracts and "English (auto-translated)" not in available_abstracts:
                     tab_labels.append("English (auto-translated)")
-                    tab_contents.append(None)  # Placeholder for on-demand translation
-                
-                # Add Hungarian (auto-translated) tab if not already present in available abstracts
+                    tab_contents.append(None)
+
                 if "Hungarian" not in available_abstracts:
                     tab_labels.append("Hungarian (auto-translated)")
-                    tab_contents.append(None)  # Placeholder for auto-translated content
+                    tab_contents.append(None)
 
-                # Create tabs for available languages
                 if tab_labels:
                     tabs = st.tabs(tab_labels)
-                    
                     for tab_index, (tab, content) in enumerate(zip(tabs, tab_contents)):
                         with tab:
-                            # Determine which language this tab is for
                             tab_label = tab_labels[tab_index]
-                            
-                            # Handle auto-translated tabs (English and Hungarian)
-                            if content is None:
-                                # Determine target language based on tab label
-                                if "English" in tab_label:
-                                    target_language = "English"
-                                    session_key_prefix = "english_translation"
-                                elif "Hungarian" in tab_label:
-                                    target_language = "Hungarian"
-                                    session_key_prefix = "hungarian_translation"
-                                else:
-                                    # Should not happen
-                                    st.info("Auto-translation not available for this language.")
-                                    continue
-                                
-                                translation_key = f"{session_key_prefix}_{assessment.record_id}"
-                                translated_content = st.session_state.get(translation_key, None)
-                                
-                                if translated_content is None:
-                                    # Translation not yet requested/loaded
-                                    # Find the first available abstract as source
-                                    source_language = None
-                                    source_abstract = None
-                                    
-                                    # Prefer languages in this order (avoid translating from target language)
-                                    prefer_order = ["English", "French", "German", "Spanish", "Chinese", "Russian"]
-                                    for lang in prefer_order:
-                                        if lang in available_abstracts and lang != target_language:
-                                            source_language = lang
-                                            source_abstract = available_abstracts[lang]
-                                            break
-                                    
-                                    if source_abstract and source_language:
-                                        api_key = os.getenv("GEMINI_API_KEY")
-                                        if api_key:
-                                            if st.button(f"Translate to {target_language}", key=f"translate_btn_{assessment.record_id}_{target_language}"):
-                                                # Load translation cache from disk
-                                                translation_cache = load_translation_cache()
-                                                
-                                                try:
-                                                    with st.spinner(f"Translating from {source_language} to {target_language}..."):
-                                                        translated = translate_text(
-                                                            source_abstract,
-                                                            source_language,
-                                                            target_language,
-                                                            api_key
-                                                        )
-                                                    # Cache translation to both session state and disk
-                                                    st.session_state[translation_key] = translated
-                                                    set_cached_translation(
-                                                        translation_cache,
-                                                        assessment.record_id,
-                                                        source_language,
-                                                        target_language,
-                                                        translated,
-                                                        original_text=source_abstract
-                                                    )
-                                                    save_translation_cache(translation_cache)
-                                                    st.rerun()
-                                                except Exception as e:
-                                                    st.error(f"Translation failed: {str(e)}")
-                                        else:
-                                            st.warning("GEMINI_API_KEY not configured. Cannot translate abstract.")
-                                    else:
-                                        st.info(f"No abstract available for translation to {target_language}.")
-                                elif translated_content == "":
-                                    # Translation was attempted but failed
-                                    st.info("Translation not available.")
-                                else:
-                                    # Show cached translation
-                                    st.info(translated_content)
+                            if content is not None:
+                                st.markdown(
+                                    f'<div class="abstract-box">{html.escape(content)}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                continue
+
+                            target_language = "English" if "English" in tab_label else "Hungarian"
+                            prefer_order = [
+                                "English",
+                                "German",
+                                "French",
+                                "Spanish",
+                                "Chinese",
+                                "Russian",
+                                "Japanese",
+                                "Korean",
+                            ]
+                            source_language = None
+                            source_abstract = None
+                            for lang in prefer_order:
+                                if lang in available_abstracts and lang != target_language:
+                                    source_language = lang
+                                    source_abstract = available_abstracts[lang]
+                                    break
+                            if not source_abstract and available_abstracts:
+                                for lang, txt in available_abstracts.items():
+                                    if lang != target_language and txt:
+                                        source_language = lang
+                                        source_abstract = txt
+                                        break
+
+                            if not (source_abstract and source_language):
+                                st.info(f"No abstract available for translation to {target_language}.")
+                                continue
+
+                            # Check disk cache first!
+                            cached_text = get_cached_translation(
+                                translation_cache,
+                                assessment.record_id,
+                                source_language,
+                                target_language,
+                            )
+                            if cached_text:
+                                st.markdown(
+                                    f'<div class="abstract-box">{html.escape(cached_text)}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            elif api_key:
+                                if st.button(
+                                    f"Translate to {target_language}",
+                                    key=f"translate_btn_{assessment.record_id}_{target_language}",
+                                ):
+                                    try:
+                                        with st.spinner(
+                                            f"Translating from {source_language} to {target_language}..."
+                                        ):
+                                            translated = translate_text(
+                                                source_abstract,
+                                                source_language,
+                                                target_language,
+                                                api_key,
+                                                model=trans_model,
+                                                thinking_level=trans_thinking,
+                                            )
+                                        set_cached_translation(
+                                            translation_cache,
+                                            assessment.record_id,
+                                            source_language,
+                                            target_language,
+                                            translated,
+                                            model=trans_model,
+                                            original_text=source_abstract,
+                                        )
+                                        st.rerun()
+                                    except Exception as exc:
+                                        st.error(f"Translation failed: {exc}")
                             else:
-                                # Regular language tab
-                                st.info(content)
+                                st.warning("GEMINI_API_KEY not configured. Cannot translate abstract.")
             else:
-                # If abstract is a simple string
-                st.info(abstract_data)
+                primary_abstract_text = str(abstract_data)
+                st.info(primary_abstract_text)
         else:
             st.info("No abstract available")
 
-    with col2:
-        # Legal Status section
-        if hasattr(assessment, "status_analysis") and assessment.status_analysis:
-            status = assessment.status_analysis
-            
-            # Determine info/warning/error styling based on severity
-            severity_color = "#94A3B8"
-            severity_emoji = "ℹ️"
-            if status.severity.value == "HIGH":
-                severity_color = "#EF4444"
-                severity_emoji = "🚨"
-            elif status.severity.value == "MEDIUM":
-                severity_color = "#F59E0B"
-                severity_emoji = "⚠️"
-            
-            st.markdown(
-                f"""
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <h4 style="margin: 0;">Legal Status</h4>
-            </div>
-            """,
-                unsafe_allow_html=True,
+        # --- CLAIMS EXPANDER ---
+        claims_text = _extract_claims_text(patent_data)
+        if claims_text:
+            with st.expander("Claims"):
+                st.text(claims_text)
+
+        # --- DEEP TECHNICAL BRIEF (FULL-TEXT OR UPLOADED PDF) ---
+        st.markdown("#### Deep Technical Brief")
+
+        # Direct links to fetch the full patent PDF
+        gp_id = f"{assessment.jurisdiction}{assessment.doc_number}".replace(" ", "")
+        google_patents_url = f"https://patents.google.com/patent/{gp_id}" if gp_id else None
+        link_parts = []
+        if provider_url:
+            link_parts.append(f"[Open on Provider]({provider_url})")
+        if google_patents_url:
+            link_parts.append(f"[Open on Google Patents (PDF)]({google_patents_url})")
+        if link_parts:
+            st.caption("Full patent links: " + " · ".join(link_parts))
+
+        # Stored PDF status, auto-fetch from Google Patents, & uploader
+        stored_pdf = load_patent_pdf(assessment.record_id)
+        if stored_pdf is not None:
+            pdf_col1, pdf_col2, pdf_col3 = st.columns(
+                [2.2, 1.3, 1.1], vertical_alignment="center"
             )
-            
-            # Status flags
+            with pdf_col1:
+                st.success(f"Stored PDF attached ({len(stored_pdf) / 1024:.0f} KB)")
+            with pdf_col2:
+                st.download_button(
+                    "Download PDF",
+                    data=stored_pdf,
+                    file_name=f"{assessment.jurisdiction}_{assessment.doc_number}.pdf",
+                    mime="application/pdf",
+                    key=f"dl_pdf_{assessment.record_id}",
+                    width="stretch",
+                )
+            with pdf_col3:
+                if st.button("Remove PDF", key=f"rm_pdf_{assessment.record_id}", width="stretch"):
+                    delete_patent_pdf(assessment.record_id)
+                    st.rerun()
+        else:
+            if gp_id and st.button(
+                "Auto-fetch PDF from Google Patents",
+                key=f"fetch_gp_pdf_{assessment.record_id}",
+            ):
+                with st.spinner(f"Downloading PDF for {gp_id} from Google Patents..."):
+                    fetched_pdf = fetch_google_patents_pdf(
+                        assessment.jurisdiction, assessment.doc_number
+                    )
+                if fetched_pdf:
+                    save_patent_pdf(assessment.record_id, fetched_pdf)
+                    st.success(f"Downloaded & saved PDF ({len(fetched_pdf) / 1024:.0f} KB).")
+                    st.rerun()
+                else:
+                    st.warning(
+                        "PDF not found automatically on Google Patents. "
+                        "You can open the link above and upload it manually below."
+                    )
+
+            uploaded_pdf = st.file_uploader(
+                "Or upload full patent PDF manually (saved for this patent)",
+                type=["pdf"],
+                key=f"upload_pdf_{assessment.record_id}",
+            )
+            if uploaded_pdf is not None:
+                save_patent_pdf(assessment.record_id, uploaded_pdf.getvalue())
+                st.success("Patent PDF saved.")
+                st.rerun()
+
+        brief_col1, brief_col2, _brief_col3 = st.columns(
+            [1.4, 2.2, 1.4], vertical_alignment="bottom"
+        )
+        with brief_col1:
+            brief_lang = st.selectbox(
+                "Brief language",
+                ["English", "Hungarian"],
+                key=f"brief_lang_{assessment.record_id}",
+            )
+        brief_cache_id = f"{assessment.record_id}_brief"
+        cached_brief = get_cached_translation(
+            translation_cache, brief_cache_id, "patent", brief_lang
+        )
+        with brief_col2:
+            btn_label = "Regenerate Brief" if cached_brief else "Generate Technical Brief"
+            if stored_pdf is not None:
+                btn_label += " (from PDF)"
+            gen_brief_clicked = st.button(
+                btn_label,
+                key=f"gen_brief_{assessment.record_id}_{brief_lang}",
+            )
+
+        if gen_brief_clicked:
+            if not api_key:
+                st.warning("GEMINI_API_KEY not configured.")
+            else:
+                brief_model = st.session_state.get("llm_brief_model", config.llm_brief_model)
+                brief_thinking = st.session_state.get(
+                    "llm_brief_thinking_level", config.llm_brief_thinking_level
+                )
+                full_description = _extract_text_field(patent_data.get("description"))
+                full_claims = claims_text
+
+                # If no PDF is stored, attempt on-demand full-text fetch from Lens
+                if stored_pdf is None and not full_description and assessment.lens_id and config.is_lens_configured:
+                    try:
+                        with st.spinner("Fetching full patent text from Lens.org..."):
+                            full_rec = asyncio.run(
+                                LensConnector().get_patent_by_lens_id(
+                                    assessment.lens_id, include_full_text=True
+                                )
+                            )
+                        if full_rec:
+                            full_description = _extract_text_field(full_rec.get("description"))
+                            fetched_claims = _extract_text_field(full_rec.get("claims"))
+                            if fetched_claims:
+                                full_claims = fetched_claims
+                    except Exception as exc:
+                        st.warning(f"Could not fetch full text from Lens ({exc}); using available text.")
+
+                try:
+                    source_desc = "stored PDF" if stored_pdf is not None else "patent text"
+                    with st.spinner(
+                        f"Generating {brief_lang} technical brief from {source_desc} ({brief_model}, {brief_thinking})..."
+                    ):
+                        brief_md = generate_technical_brief(
+                            title=english_title or assessment.title,
+                            abstract=primary_abstract_text,
+                            description=full_description,
+                            claims=full_claims,
+                            pdf_bytes=stored_pdf,
+                            jurisdiction=assessment.jurisdiction,
+                            status_summary=assessment.status_analysis.interpretation,
+                            classifications=getattr(assessment, "all_classifications", [])
+                            or assessment.classification_tags,
+                            output_language=brief_lang,
+                            api_key=api_key,
+                            model=brief_model,
+                            thinking_level=brief_thinking,
+                        )
+                    set_cached_translation(
+                        translation_cache,
+                        brief_cache_id,
+                        "patent",
+                        brief_lang,
+                        brief_md,
+                        model=brief_model,
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Brief generation failed: {exc}")
+
+        if cached_brief:
+            st.markdown(cached_brief)
+        else:
+            st.caption(
+                "Upload the patent PDF above (recommended — includes figures, tables & full specification) "
+                "or click Generate to fetch full text automatically when available."
+            )
+
+    with col2:
+        # --- AI ANALYSIS (SEPARATE FROM GEORGE'S REVIEW) ---
+        st.markdown("#### AI Analysis")
+        st.progress(assessment.relevance_score / 100, text=f"AI Score: {assessment.relevance_score:.1f}/100")
+
+        if getattr(assessment, "rationale", ""):
+            st.markdown(f"**Rationale:** {assessment.rationale}")
+
+        all_cls = getattr(assessment, "all_classifications", None) or assessment.classification_tags
+        if all_cls:
+            st.markdown("**IPC/CPC:** " + ", ".join(f"`{c}`" for c in all_cls[:12]))
+
+        st.markdown("**LLM Tags**")
+        if getattr(assessment, "llm_tags", None):
+            pills = "".join(
+                f'<span class="tag-pill">{html.escape(tag)}</span>'
+                for tag in assessment.llm_tags
+            )
+            st.markdown(f'<div class="tag-container">{pills}</div>', unsafe_allow_html=True)
+        else:
+            st.caption("No tags")
+
+        st.markdown("**Notable Features**")
+        if getattr(assessment, "llm_features", None):
+            for feature in assessment.llm_features:
+                st.markdown(f"- {feature}")
+        else:
+            st.caption("None detected")
+
+        st.markdown("---")
+
+        # --- LEGAL STATUS ---
+        if getattr(assessment, "status_analysis", None):
+            status = assessment.status_analysis
+            st.markdown("#### Legal Status")
             status_flags = []
             if status.is_refused:
                 status_flags.append("🔴 Refused")
@@ -271,112 +500,120 @@ def render_deep_dive(assessment):
                 status_flags.append("✅ Active")
             if status.is_pending:
                 status_flags.append("⏳ Pending")
-            
+
             if status_flags:
                 st.markdown(f"**Status:** {' • '.join(status_flags)}")
-            
-            # Jurisdiction and severity
             st.markdown(f"**Jurisdiction:** {status.jurisdiction}")
-           
-            # Code found
             if status.code_found:
                 st.markdown(f"**Event Code:** `{status.code_found}`")
-                               
-        # Relevance section with tooltip
-        st.markdown(
-            """
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <h4 style="margin: 0;">AI Analysis</h4>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
 
-        # Relevance score with icon and tooltip
-        relevance_tooltip = (
-            "Relevance score indicates how closely this patent matches the search criteria. "
-            "Based on LLM scoring over the English title and abstract with keyword weighting."
-        )
-        st.markdown(
-            f"""
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 15px; margin-bottom: 10px;">
-            <strong>Relevance</strong>
-            <span style="cursor: help; color: #94A3B8;" title="{relevance_tooltip}">?</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-        st.progress(assessment.relevance_score / 100, text=f"{assessment.relevance_score:.1f}%")
+        st.markdown("---")
 
-        st.markdown(
-            """
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
-            <strong>LLM Tags</strong>
-            <span style="cursor: help; color: #94A3B8;" title="Key terms extracted by the LLM from the title and abstract.">?</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
-        )
-        if getattr(assessment, "llm_tags", None):
-            for tag in assessment.llm_tags:
-                st.markdown(f"`{tag}`")
+        # --- GEORGE'S REVIEW FORM ---
+        st.markdown("#### George's Review")
+        existing_review = get_review(assessment.record_id)
+        if existing_review is not None:
+            st.success(f"Saved Grade: **{existing_review['user_score']:.0f}/100**")
+            default_user_score = round(float(existing_review["user_score"]))
+            default_notes = existing_review.get("notes", "")
+            default_cal = bool(existing_review.get("use_for_calibration", 1))
         else:
-            st.caption("No tags")
+            st.caption("Not yet reviewed.")
+            default_user_score = 50
+            default_notes = ""
+            default_cal = True
 
-        # Notable Features section with icon and tooltip
-        features_tooltip = (
-            "Notable features highlight unusual or significant technical characteristics detected in the patent, "
-            "such as anomalous energy patterns or heat signatures."
+        user_score = st.slider(
+            "My Score (0–100)",
+            0,
+            100,
+            default_user_score,
+            key=f"review_score_{assessment.record_id}",
         )
-        st.markdown(
-            f"""
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 20px; margin-bottom: 5px;">
-            <strong>Notable Features</strong>
-            <span style="cursor: help; color: #94A3B8;" title="{features_tooltip}">?</span>
-        </div>
-        """,
-            unsafe_allow_html=True,
+        review_notes = st.text_area(
+            "Review Notes",
+            value=default_notes,
+            placeholder="e.g., EDM wire-bonding noise, or interesting H2 plasma cathode...",
+            height=90,
+            key=f"review_notes_{assessment.record_id}",
         )
-        if getattr(assessment, "llm_features", None):
-            for feature in assessment.llm_features:
-                st.markdown(f"- {feature}")
-        else:
-            st.caption("None detected")
+        use_for_cal = st.checkbox(
+            "Use as calibration example for LLM scoring",
+            value=default_cal,
+            key=f"review_cal_{assessment.record_id}",
+        )
+
+        rcol1, rcol2 = st.columns(2)
+        with rcol1:
+            if st.button("Save Review", key=f"save_rev_{assessment.record_id}", type="primary", width="stretch"):
+                save_review(
+                    record_id=assessment.record_id,
+                    user_score=user_score,
+                    notes=review_notes,
+                    doc_number=assessment.doc_number,
+                    jurisdiction=assessment.jurisdiction,
+                    title=assessment.title,
+                    title_en=english_title or "",
+                    abstract=primary_abstract_text,
+                    provider_name=assessment.provider_name,
+                    provider_record_url=provider_url,
+                    llm_score=assessment.relevance_score,
+                    use_for_calibration=use_for_cal,
+                )
+                st.success("Review saved.")
+                st.rerun()
+        with rcol2:
+            if existing_review is not None and st.button(
+                "Delete", key=f"del_rev_{assessment.record_id}", width="stretch"
+            ):
+                delete_review(assessment.record_id)
+                st.warning("Review deleted.")
+                st.rerun()
 
 
-def render_deep_dive_tab(assessments):
+def render_deep_dive_tab(assessments) -> None:
     if not assessments:
         st.info("No analysis data available yet.")
         return
 
-    # Check if a specific record ID was selected from the results tab
-    selected_record_id_from_results = st.session_state.get("selected_record_id_for_analysis")
-
-    # Sort assessments by relevance_score descending, matching the order in search results tab
     sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
-    
-    # Determine which record ID to display
     available_record_ids = [a.record_id for a in sorted_assessments]
 
-    # If a record ID was set from results tab selection, use it; otherwise use the first one
-    if selected_record_id_from_results and selected_record_id_from_results in available_record_ids:
-        default_index = available_record_ids.index(selected_record_id_from_results)
-        # Clear the session state after using it
-        st.session_state["selected_record_id_for_analysis"] = None
+    selected_from_results = st.session_state.get("selected_record_id_for_analysis")
+    if selected_from_results and selected_from_results in available_record_ids:
+        current_idx = available_record_ids.index(selected_from_results)
     else:
-        default_index = 0
+        current_idx = 0
 
-    # Selector
-    selected_record_id = st.selectbox(
-        "Select Patent",
-        options=available_record_ids,
-        index=default_index,
-        format_func=lambda x: f"{x} - {next((a.title.capitalize() if a.title else 'Unknown' for a in sorted_assessments if a.record_id == x), 'Unknown')}",
-        label_visibility="collapsed",
-    )
+    nav1, nav2, nav3 = st.columns([1.0, 4.2, 1.0], vertical_alignment="center")
+    with nav1:
+        if st.button("◀ Prev", disabled=current_idx <= 0, width="stretch"):
+            st.session_state["selected_record_id_for_analysis"] = available_record_ids[current_idx - 1]
+            st.rerun()
+    with nav2:
+        selected_record_id = st.selectbox(
+            "Select Patent",
+            options=available_record_ids,
+            index=current_idx,
+            format_func=lambda x: next(
+                (
+                    f"[{a.relevance_score:.0f}] {a.jurisdiction} {a.doc_number} — {a.title_en or a.title or 'Untitled'}"
+                    for a in sorted_assessments
+                    if a.record_id == x
+                ),
+                x,
+            ),
+            label_visibility="collapsed",
+            key="analysis_record_selector",
+        )
+        if selected_record_id != available_record_ids[current_idx]:
+            st.session_state["selected_record_id_for_analysis"] = selected_record_id
+            current_idx = available_record_ids.index(selected_record_id)
+    with nav3:
+        if st.button("Next ▶", disabled=current_idx >= len(available_record_ids) - 1, width="stretch"):
+            st.session_state["selected_record_id_for_analysis"] = available_record_ids[current_idx + 1]
+            st.rerun()
 
-    # Find selected assessment
-    target = next((a for a in assessments if a.record_id == selected_record_id), None)
-
+    target = next((a for a in sorted_assessments if a.record_id == selected_record_id), None)
     if target:
         render_deep_dive(target)

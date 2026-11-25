@@ -1,132 +1,120 @@
 """
-Cache utilities for patent search results.
+Per-query JSON file cache utilities for patent search results.
+Each cached query is stored as a standalone readable JSON file under `data/search_cache/`.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta
+import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from project_aether.core.config import get_config
 
-
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 CACHE_EXPIRATION_DAYS = 30
 
-import logging
-
-logger = logging.getLogger("ProjectAether")
+logger = logging.getLogger("ProjectAether.SearchCache")
 
 
 def _utc_now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
-def get_search_cache_path() -> Path:
-    """Get the search cache file path."""
+def get_search_cache_dir() -> Path:
+    """Return directory storing per-query search cache JSON files."""
     config = get_config()
-    return config.database_path.parent / "search_cache.json"
+    return config.database_path.parent / "search_cache"
 
 
-def _empty_search_cache() -> Dict[str, Any]:
-    """Create an empty search cache structure."""
-    return {
-        "version": CACHE_VERSION,
-        "entries": {},
-        "updated_at": _utc_now().isoformat(),
-    }
+def _legacy_search_cache_path(cache_dir: Path) -> Path:
+    return cache_dir.parent / "search_cache.json"
 
 
-def load_search_cache(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Load the search cache from disk.
-    
-    Args:
-        path: Optional custom cache file path.
-        
-    Returns:
-        Cache dictionary with version, entries, and metadata.
-    """
-    cache_path = path or get_search_cache_path()
-    if not cache_path.exists():
-        return _empty_search_cache()
-
+def _migrate_legacy_search_cache(cache_dir: Path) -> None:
+    """Split legacy monolithic `search_cache.json` into per-query JSON files once."""
+    legacy_path = _legacy_search_cache_path(cache_dir)
+    if not legacy_path.exists() or cache_dir.exists():
+        return
     try:
-        with cache_path.open("r", encoding="utf-8") as handle:
+        with legacy_path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
-        data.setdefault("entries", {})
-        data.setdefault("version", CACHE_VERSION)
-        data.setdefault("updated_at", _utc_now().isoformat())
-        return data
-    except Exception:
-        return _empty_search_cache()
-
-
-def save_search_cache(cache: Dict[str, Any], path: Optional[Path] = None) -> None:
-    """Save the search cache to disk.
-    
-    Args:
-        cache: Cache dictionary to save.
-        path: Optional custom cache file path.
-    """
-    cache_path = path or get_search_cache_path()
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache["updated_at"] = _utc_now().isoformat()
-    with cache_path.open("w", encoding="utf-8") as handle:
-        json.dump(cache, handle, indent=2, ensure_ascii=False)
+        entries = data.get("entries", {})
+        if not isinstance(entries, dict) or not entries:
+            return
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        migrated = 0
+        for entry in entries.values():
+            if not isinstance(entry, dict):
+                continue
+            cached_at = entry.get("cached_at")
+            if cached_at and _is_cache_entry_expired(cached_at):
+                continue
+            params = entry.get("parameters", {})
+            key = _make_cache_key(
+                provider=params.get("provider"),
+                jurisdiction=params.get("jurisdiction"),
+                start_date=params.get("start_date"),
+                end_date=params.get("end_date"),
+                positive_keywords=params.get("positive_keywords"),
+                negative_keywords=params.get("negative_keywords"),
+                patent_status_filter=params.get("patent_status_filter"),
+                language=params.get("language") or "EN",
+                limit=params.get("limit"),
+            )
+            file_path = _entry_file_path(
+                cache_dir,
+                provider=params.get("provider"),
+                language=params.get("language") or "EN",
+                cache_key=key,
+            )
+            with file_path.open("w", encoding="utf-8") as out:
+                json.dump(entry, out, indent=2, ensure_ascii=False)
+            migrated += 1
+        logger.info("Migrated %d search cache entries to %s", migrated, cache_dir)
+    except Exception as exc:
+        logger.warning("Failed to migrate legacy search cache: %s", exc)
 
 
 def _make_cache_key(
-    provider: Optional[str],
-    jurisdiction: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    positive_keywords: Optional[List[Any]],
-    negative_keywords: Optional[List[str]],
-    patent_status_filter: Optional[List[str]],
+    provider: str | None,
+    jurisdiction: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    positive_keywords: list[Any] | None,
+    negative_keywords: list[str] | None,
+    patent_status_filter: list[str] | None,
     language: str,
-    limit: Optional[int],
+    limit: int | None,
 ) -> str:
     """Generate a unique cache key from search parameters.
-    
-    All search parameters are included in the key to ensure cache hits
-    only occur when ALL parameters match exactly.
-    
-    Args:
-        jurisdiction: Single jurisdiction code or None.
-        start_date: Start date in YYYY-MM-DD or None.
-        end_date: End date in YYYY-MM-DD or None.
-        positive_keywords: List of include terms (gracefully handles list of strings or list of lists) or None.
-        negative_keywords: List of exclude terms or None.
-        patent_status_filter: List of status filters or None.
-        language: Language code (e.g., "EN", "ZH").
-        limit: Maximum number of results or None.
-        
-    Returns:
-        SHA-256 hash string as cache key.
+
+    When `start_date` is None (unbounded search), `end_date` is omitted from the
+    key so repeated unbounded searches reuse cached results across days.
     """
-    # Normalize lists to sorted tuples for consistent hashing
-    pos_kw_normalized = []
+    pos_kw_normalized: list[Any] = []
     if positive_keywords:
         for item in positive_keywords:
             if isinstance(item, list):
-                pos_kw_normalized.append(tuple(sorted(item)))
+                pos_kw_normalized.append(tuple(sorted(str(t) for t in item)))
             else:
                 pos_kw_normalized.append(str(item))
-    pos_kw = tuple(sorted(pos_kw_normalized))
-    
+    pos_kw = tuple(sorted(pos_kw_normalized, key=lambda x: str(x)))
+
     neg_kw = tuple(sorted(negative_keywords)) if negative_keywords else ()
     status = tuple(sorted(patent_status_filter)) if patent_status_filter else ()
-    
-    # Build a canonical representation of all parameters
+
+    effective_end_date = end_date if start_date is not None else None
+
     payload = json.dumps(
         {
             "provider": provider,
             "jurisdiction": jurisdiction,
             "start_date": start_date,
-            "end_date": end_date,
+            "end_date": effective_end_date,
             "positive_keywords": pos_kw,
             "negative_keywords": neg_kw,
             "patent_status_filter": status,
@@ -138,53 +126,56 @@ def _make_cache_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _entry_file_path(
+    cache_dir: Path,
+    *,
+    provider: str | None,
+    language: str,
+    cache_key: str,
+) -> Path:
+    prov = (provider or "any").lower()
+    lang = (language or "EN").upper()
+    return cache_dir / f"{prov}_{lang}_{cache_key[:16]}.json"
+
+
 def _is_cache_entry_expired(cached_at: str) -> bool:
-    """Check if a cache entry has expired based on the cached timestamp.
-    
-    Args:
-        cached_at: ISO format timestamp string when entry was cached.
-        
-    Returns:
-        True if entry is older than CACHE_EXPIRATION_DAYS, False otherwise.
-    """
     try:
         cached_time = datetime.fromisoformat(cached_at)
-        age = _utc_now() - cached_time
-        return age > timedelta(days=CACHE_EXPIRATION_DAYS)
+        if cached_time.tzinfo is None:
+            cached_time = cached_time.replace(tzinfo=UTC)
+        return (_utc_now() - cached_time) > timedelta(days=CACHE_EXPIRATION_DAYS)
     except (ValueError, TypeError):
-        # If we can't parse the timestamp, treat as expired
         return True
 
 
+def load_search_cache(cache_dir: Path | None = None) -> dict[str, Any]:
+    """Return a lightweight handle for the per-query search cache directory."""
+    target_dir = cache_dir or get_search_cache_dir()
+    if cache_dir is None:
+        _migrate_legacy_search_cache(target_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return {"version": CACHE_VERSION, "dir": str(target_dir)}
+
+
+def save_search_cache(cache: dict[str, Any], cache_dir: Path | None = None) -> None:
+    """No-op compatibility helper; per-query files are written directly on set."""
+    _ = cache, cache_dir
+
+
 def get_cached_search_results(
-    cache: Dict[str, Any],
-    provider: Optional[str],
-    jurisdiction: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    positive_keywords: Optional[List[Any]],
-    negative_keywords: Optional[List[str]],
-    patent_status_filter: Optional[List[str]],
+    cache: dict[str, Any],
+    provider: str | None,
+    jurisdiction: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    positive_keywords: list[Any] | None,
+    negative_keywords: list[str] | None,
+    patent_status_filter: list[str] | None,
     language: str,
-    limit: Optional[int],
-) -> Optional[Dict[str, Any]]:
-    """Retrieve cached search results if available and not expired.
-    
-    Args:
-        cache: The search cache dictionary.
-        provider: Active patent provider (`lens` or `epo`) or None.
-        jurisdiction: Single jurisdiction code or None.
-        start_date: Start date in YYYY-MM-DD or None.
-        end_date: End date in YYYY-MM-DD or None.
-        positive_keywords: List of include terms or None.
-        negative_keywords: List of exclude terms or None.
-        patent_status_filter: List of status filters or None.
-        language: Language code (e.g., "EN", "ZH").
-        limit: Maximum number of results or None.
-        
-    Returns:
-        Cached search results dictionary if found and valid, None otherwise.
-    """
+    limit: int | None,
+) -> dict[str, Any] | None:
+    """Retrieve cached search results for exact query parameters if not expired."""
+    target_dir = Path(cache.get("dir") or get_search_cache_dir())
     cache_key = _make_cache_key(
         provider=provider,
         jurisdiction=jurisdiction,
@@ -196,51 +187,43 @@ def get_cached_search_results(
         language=language,
         limit=limit,
     )
-    
-    entries = cache.get("entries", {})
-    entry = entries.get(cache_key)
-    
-    if entry is None:
+    file_path = _entry_file_path(target_dir, provider=provider, language=language, cache_key=cache_key)
+    if not file_path.exists():
         return None
-    
-    # Check if entry has expired
+
+    try:
+        with file_path.open("r", encoding="utf-8") as handle:
+            entry = json.load(handle)
+    except Exception:
+        return None
+
     cached_at = entry.get("cached_at")
     if cached_at and _is_cache_entry_expired(cached_at):
-        # Remove expired entry
-        del entries[cache_key]
+        try:
+            file_path.unlink()
+        except OSError:
+            pass
         return None
-    
+
     return entry.get("results")
 
 
 def set_cached_search_results(
-    cache: Dict[str, Any],
-    provider: Optional[str],
-    jurisdiction: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
-    positive_keywords: Optional[List[Any]],
-    negative_keywords: Optional[List[str]],
-    patent_status_filter: Optional[List[str]],
+    cache: dict[str, Any],
+    provider: str | None,
+    jurisdiction: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    positive_keywords: list[Any] | None,
+    negative_keywords: list[str] | None,
+    patent_status_filter: list[str] | None,
     language: str,
-    limit: Optional[int],
-    results: Dict[str, Any],
+    limit: int | None,
+    results: dict[str, Any],
 ) -> None:
-    """Store search results in the cache.
-    
-    Args:
-        cache: The search cache dictionary.
-        provider: Active patent provider (`lens` or `epo`) or None.
-        jurisdiction: Single jurisdiction code or None.
-        start_date: Start date in YYYY-MM-DD or None.
-        end_date: End date in YYYY-MM-DD or None.
-        positive_keywords: List of include terms or None.
-        negative_keywords: List of exclude terms or None.
-        patent_status_filter: List of status filters or None.
-        language: Language code (e.g., "EN", "ZH").
-        limit: Maximum number of results or None.
-        results: Search results dictionary to cache.
-    """
+    """Persist a single query's search results to its own JSON file."""
+    target_dir = Path(cache.get("dir") or get_search_cache_dir())
+    target_dir.mkdir(parents=True, exist_ok=True)
     cache_key = _make_cache_key(
         provider=provider,
         jurisdiction=jurisdiction,
@@ -252,15 +235,14 @@ def set_cached_search_results(
         language=language,
         limit=limit,
     )
-    
-    entries = cache.setdefault("entries", {})
+    file_path = _entry_file_path(target_dir, provider=provider, language=language, cache_key=cache_key)
     entry = {
         "cached_at": _utc_now().isoformat(),
         "parameters": {
             "provider": provider,
             "jurisdiction": jurisdiction,
             "start_date": start_date,
-            "end_date": end_date,
+            "end_date": end_date if start_date is not None else None,
             "positive_keywords": positive_keywords,
             "negative_keywords": negative_keywords,
             "patent_status_filter": patent_status_filter,
@@ -269,27 +251,50 @@ def set_cached_search_results(
         },
         "results": results,
     }
-    entries[cache_key] = entry
+    with file_path.open("w", encoding="utf-8") as handle:
+        json.dump(entry, handle, indent=2, ensure_ascii=False)
 
 
-def clean_expired_entries(cache: Dict[str, Any]) -> int:
-    """Remove all expired entries from the cache.
-    
-    Args:
-        cache: The search cache dictionary.
-        
-    Returns:
-        Number of expired entries removed.
-    """
-    entries = cache.get("entries", {})
-    expired_keys = []
-    
-    for key, entry in entries.items():
-        cached_at = entry.get("cached_at")
-        if cached_at and _is_cache_entry_expired(cached_at):
-            expired_keys.append(key)
-    
-    for key in expired_keys:
-        del entries[key]
-    
-    return len(expired_keys)
+def clean_expired_entries(cache: dict[str, Any]) -> int:
+    """Remove expired per-query JSON files from the cache directory."""
+    target_dir = Path(cache.get("dir") or get_search_cache_dir())
+    if not target_dir.exists():
+        return 0
+    removed = 0
+    for file_path in target_dir.glob("*.json"):
+        try:
+            with file_path.open("r", encoding="utf-8") as handle:
+                entry = json.load(handle)
+            cached_at = entry.get("cached_at")
+            if cached_at and _is_cache_entry_expired(cached_at):
+                file_path.unlink()
+                removed += 1
+        except Exception as exc:
+            logger.debug("Skipping unreadable search cache file %s: %s", file_path, exc)
+            continue
+    return removed
+
+
+def clear_search_cache(cache_dir: Path | None = None) -> int:
+    """Delete all per-query search cache files and return count removed."""
+    target_dir = cache_dir or get_search_cache_dir()
+    if not target_dir.exists():
+        return 0
+    removed = 0
+    for file_path in target_dir.glob("*.json"):
+        try:
+            file_path.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def get_search_cache_stats(cache_dir: Path | None = None) -> dict[str, Any]:
+    """Return file count and total size in bytes for the search cache directory."""
+    target_dir = cache_dir or get_search_cache_dir()
+    if not target_dir.exists():
+        return {"entries": 0, "size_bytes": 0, "path": str(target_dir)}
+    files = list(target_dir.glob("*.json"))
+    total_size = sum(f.stat().st_size for f in files if f.exists())
+    return {"entries": len(files), "size_bytes": total_size, "path": str(target_dir)}

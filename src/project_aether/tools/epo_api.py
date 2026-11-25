@@ -19,12 +19,18 @@ import asyncio
 import logging
 import re
 import unicodedata
-from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from xml.etree import ElementTree as ET
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from project_aether.core.config import get_config
 
@@ -54,8 +60,8 @@ class EPOConnector:
 
     def __init__(
         self,
-        consumer_key: Optional[str] = None,
-        consumer_secret: Optional[str] = None,
+        consumer_key: str | None = None,
+        consumer_secret: str | None = None,
     ) -> None:
         """
         Initialize the EPO connector.
@@ -77,8 +83,8 @@ class EPOConnector:
 
         self._requests_made = 0
         self._window_start = datetime.now()
-        self._access_token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
+        self._access_token: str | None = None
+        self._token_expires_at: datetime | None = None
 
     async def _check_rate_limit(self) -> None:
         """
@@ -120,7 +126,7 @@ class EPOConnector:
         if not self.consumer_key or not self.consumer_secret:
             raise EPOAPIError("Missing EPO OPS credentials (consumer key/secret).")
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if (
             not force_refresh
             and self._access_token
@@ -161,7 +167,7 @@ class EPOConnector:
 
         normalized = unicodedata.normalize("NFKC", term)
         allowed_punct = {"-", "+", "/", "."}
-        cleaned_chars: List[str] = []
+        cleaned_chars: list[str] = []
         for ch in normalized:
             if ch == '"':
                 cleaned_chars.append(" ")
@@ -183,12 +189,12 @@ class EPOConnector:
 
     @staticmethod
     def _clip_terms(
-        terms: List[str],
-        max_terms: Optional[int],
-        max_total_tokens: Optional[int] = None,
-    ) -> List[str]:
+        terms: list[str],
+        max_terms: int | None,
+        max_total_tokens: int | None = None,
+    ) -> list[str]:
         """Return a sanitized, bounded list of non-empty keyword terms."""
-        output: List[str] = []
+        output: list[str] = []
         used_tokens = 0
         for term in terms:
             if max_terms is not None and len(output) >= max_terms:
@@ -216,15 +222,15 @@ class EPOConnector:
 
     def _build_ops_cql(
         self,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str],
-        positive_keywords: List[Any],
-        negative_keywords: List[str],
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None,
+        positive_keywords: list[Any],
+        negative_keywords: list[str],
         *,
-        max_positive_terms: Optional[int] = None,
-        max_negative_terms: Optional[int] = None,
-        max_total_tokens: Optional[int] = None,
+        max_positive_terms: int | None = None,
+        max_negative_terms: int | None = None,
+        max_total_tokens: int | None = None,
         include_negative: bool = False,
         include_date: bool = True,
     ) -> str:
@@ -247,7 +253,7 @@ class EPOConnector:
         Returns:
             OPS CQL query string.
         """
-        clauses: List[str] = []
+        clauses: list[str] = []
 
         flat_positive = []
         for item in positive_keywords:
@@ -267,8 +273,8 @@ class EPOConnector:
             max_total_tokens=max_total_tokens,
         )
 
-        include_expression: Optional[str] = None
-        include_clauses: List[str] = []
+        include_expression: str | None = None
+        include_clauses: list[str] = []
         for esc in positive_terms:
             include_clauses.append(self._build_ti_ab_phrase_clause(esc))
         if include_clauses:
@@ -306,10 +312,10 @@ class EPOConnector:
         self,
         *,
         field: str,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str],
-        positive_keywords: List[Any],
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None,
+        positive_keywords: list[Any],
         max_positive_terms: int = MAX_PRIMARY_TERMS,
         max_total_tokens: int = MAX_PRIMARY_TOKEN_BUDGET,
         include_date: bool = True,
@@ -330,7 +336,7 @@ class EPOConnector:
         Returns:
             OPS CQL query string.
         """
-        clauses: List[str] = []
+        clauses: list[str] = []
 
         flat_positive = []
         for item in positive_keywords:
@@ -345,7 +351,7 @@ class EPOConnector:
             max_total_tokens=max_total_tokens,
         )
 
-        include_clauses: List[str] = []
+        include_clauses: list[str] = []
         for esc in positive_terms:
             include_clauses.append(f'{field}="{esc}"')
         if include_clauses:
@@ -370,9 +376,9 @@ class EPOConnector:
         *,
         field: str,
         keyword: str,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str],
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None,
         include_date: bool = True,
     ) -> str:
         """Build strict OPS CQL for one keyword on one field."""
@@ -380,7 +386,7 @@ class EPOConnector:
         if not escaped:
             raise EPOAPIError("Empty keyword after sanitization.")
 
-        clauses: List[str] = [f'{field}="{escaped}"']
+        clauses: list[str] = [f'{field}="{escaped}"']
 
         if jurisdictions:
             jurisdiction_filters = [f"pn={j.upper()}*" for j in jurisdictions]
@@ -394,23 +400,29 @@ class EPOConnector:
         return " AND ".join(clauses)
 
     @staticmethod
-    def _normalize_keyword_list(keywords: Optional[List[str]]) -> List[str]:
-        """Normalize keyword list by trimming and dropping empty entries."""
+    def _normalize_keyword_list(keywords: list[Any] | None) -> list[str]:
+        """Normalize flat or grouped keyword lists by trimming and dropping empty entries."""
         if not keywords:
             return []
-        output: List[str] = []
+        output: list[str] = []
         for keyword in keywords:
-            value = (keyword or "").strip()
-            if value:
-                output.append(value)
-        return output
+            if isinstance(keyword, (list, tuple, set)):
+                for sub in keyword:
+                    value = (str(sub) if sub is not None else "").strip()
+                    if value:
+                        output.append(value)
+            else:
+                value = (str(keyword) if keyword is not None else "").strip()
+                if value:
+                    output.append(value)
+        return list(dict.fromkeys(output))
 
     @staticmethod
     def _merge_records_by_id(
-        record_groups: List[List[Dict[str, Any]]],
-    ) -> List[Dict[str, Any]]:
+        record_groups: list[list[dict[str, Any]]],
+    ) -> list[dict[str, Any]]:
         """Merge and deduplicate patent records by canonical `record_id`."""
-        merged: Dict[str, Dict[str, Any]] = {}
+        merged: dict[str, dict[str, Any]] = {}
         for group in record_groups:
             for record in group:
                 record_id = record.get("record_id")
@@ -419,7 +431,7 @@ class EPOConnector:
         return list(merged.values())
 
     @staticmethod
-    def _build_relaxed_unfielded_cql(terms: List[str], max_terms: int = 4) -> str:
+    def _build_relaxed_unfielded_cql(terms: list[str], max_terms: int = 4) -> str:
         """
         Build a relaxed CQL query using unfielded phrase clauses.
 
@@ -434,7 +446,7 @@ class EPOConnector:
         return " OR ".join(f'"{item}"' for item in picked)
 
     @staticmethod
-    def _build_relaxed_ta_cql(terms: List[str], max_terms: int = 4) -> str:
+    def _build_relaxed_ta_cql(terms: list[str], max_terms: int = 4) -> str:
         """Build a diagnostics fallback CQL using `ta` field clauses."""
         picked = EPOConnector._clip_terms(terms, max_terms=max_terms)
         if not picked:
@@ -444,7 +456,7 @@ class EPOConnector:
         return " OR ".join(f'ta="{item}"' for item in picked)
 
     @staticmethod
-    def _build_relaxed_bare_or_cql(terms: List[str], max_terms: int = 4) -> str:
+    def _build_relaxed_bare_or_cql(terms: list[str], max_terms: int = 4) -> str:
         """Build a diagnostics fallback CQL using bare terms with OR."""
         picked = EPOConnector._clip_terms(terms, max_terms=max_terms)
         if not picked:
@@ -459,7 +471,7 @@ class EPOConnector:
         return "/".join(f"{{*}}{node}" for node in path.split("/"))
 
     @staticmethod
-    def _first_text(root: ET.Element, *paths: str) -> Optional[str]:
+    def _first_text(root: ET.Element, *paths: str) -> str | None:
         """Return the first non-empty text value matching the provided paths."""
         for path in paths:
             node = root.find(EPOConnector._namespace_wild(path))
@@ -467,18 +479,18 @@ class EPOConnector:
                 return node.text.strip()
         return None
 
-    def _extract_title(self, root: ET.Element) -> List[Dict[str, str]]:
+    def _extract_title(self, root: ET.Element) -> list[dict[str, str]]:
         """Extract invention titles from OPS XML as Lens-compatible list objects."""
-        titles: List[Dict[str, str]] = []
+        titles: list[dict[str, str]] = []
         for node in root.findall(self._namespace_wild("bibliographic-data/invention-title")):
             text = (node.text or "").strip()
             if text:
                 titles.append({"lang": node.attrib.get("lang", "en"), "text": text})
         return titles
 
-    def _extract_abstract(self, root: ET.Element) -> List[Dict[str, str]]:
+    def _extract_abstract(self, root: ET.Element) -> list[dict[str, str]]:
         """Extract abstract paragraph text from OPS XML."""
-        abstracts: List[Dict[str, str]] = []
+        abstracts: list[dict[str, str]] = []
         for abstract in root.findall(self._namespace_wild("abstract")):
             lang = abstract.attrib.get("lang", "unknown")
             parts = []
@@ -490,9 +502,9 @@ class EPOConnector:
                 abstracts.append({"lang": lang.lower(), "text": text})
         return abstracts
 
-    def _extract_parties(self, root: ET.Element, party_type: str) -> List[Dict[str, Any]]:
+    def _extract_parties(self, root: ET.Element, party_type: str) -> list[dict[str, Any]]:
         """Extract applicant or inventor party entries in compatibility shape."""
-        parties: List[Dict[str, Any]] = []
+        parties: list[dict[str, Any]] = []
         for node in root.findall(
             self._namespace_wild(f"bibliographic-data/parties/{party_type}s/{party_type}")
         ):
@@ -501,16 +513,16 @@ class EPOConnector:
                 parties.append({"extracted_name": {"value": name}})
         return parties
 
-    def _extract_classifications(self, root: ET.Element, tag: str) -> List[Dict[str, str]]:
+    def _extract_classifications(self, root: ET.Element, tag: str) -> list[dict[str, str]]:
         """Extract IPC/CPC-style symbols from OPS XML elements."""
-        output: List[Dict[str, str]] = []
+        output: list[dict[str, str]] = []
         for node in root.findall(self._namespace_wild(f"bibliographic-data/{tag}")):
             symbol = "".join(node.itertext()).strip()
             if symbol:
                 output.append({"symbol": symbol})
         return output
 
-    def _extract_simple_legal_status(self, root: ET.Element) -> Dict[str, Any]:
+    def _extract_simple_legal_status(self, root: ET.Element) -> dict[str, Any]:
         """
         Extract simple legal status from bibliographic-data/application-reference.
 
@@ -527,7 +539,7 @@ class EPOConnector:
             Dictionary with patent_status inferred from kind code and application details
         """
         patent_status = "UNKNOWN"
-        application_info: Dict[str, str] = {}
+        application_info: dict[str, str] = {}
 
         # Find bibliographic-data/application-reference
         biblio_data = root.find(self._namespace_wild("bibliographic-data"))
@@ -575,7 +587,7 @@ class EPOConnector:
             "events": [],
         }
 
-    def _extract_legal_status(self, root: ET.Element) -> Dict[str, Any]:
+    def _extract_legal_status(self, root: ET.Element) -> dict[str, Any]:
         """
         Extract INPADOC legal status events from OPS Family endpoint response.
 
@@ -589,7 +601,7 @@ class EPOConnector:
         Returns:
             Dictionary with patent_status and events list, ordered by date (descending - newest first)
         """
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         patent_status = "UNKNOWN"
 
         # Find ops:patent-family element
@@ -624,18 +636,18 @@ class EPOConnector:
                             "country": "EP",
                         })
         
-        # Sort events by date descending (most recent first)
+        # Sort events chronologically ascending (oldest first, newest last)
         try:
-            events.sort(key=lambda e: e.get("date", ""), reverse=True)
+            events.sort(key=lambda e: e.get("date", ""))
         except Exception as sort_err:
             logger.debug(f"Could not sort events by date: {sort_err}")
         
-        # Infer patent status from the most recent event (first after descending sort)
+        # Infer patent status from the most recent event (last after ascending sort)
         if events:
-            latest_event = events[0]
+            latest_event = events[-1]
             event_code = latest_event.get("event_code", "").upper()
             
-            if "REFUS" in event_code or "R" in event_code:
+            if "REFUS" in event_code or event_code == "R" or event_code == "STPP":
                 patent_status = "REFUSED"
             elif "WITHDRAWN" in event_code or "WITHDRAWN" in latest_event.get("description", "").upper():
                 patent_status = "WITHDRAWN"
@@ -660,7 +672,7 @@ class EPOConnector:
     async def _fetch_legal_status_from_family(
         self,
         epo_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Fetch INPADOC legal status from the Family endpoint.
 
@@ -738,7 +750,7 @@ class EPOConnector:
                     "events": [],
                 }
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug(f"Timeout fetching Family data for {epo_id}")
             return {
                 "patent_status": "UNKNOWN",
@@ -754,7 +766,7 @@ class EPOConnector:
     async def _fetch_legal_status_from_legal_service(
         self,
         epo_id: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Fetch legal status from the OPS Legal service endpoint.
 
@@ -807,7 +819,7 @@ class EPOConnector:
                     return legal_status
                 return None
 
-        except (asyncio.TimeoutError, ET.ParseError) as exc:
+        except (TimeoutError, ET.ParseError) as exc:
             logger.debug(f"Error fetching from Legal service for {epo_id}: {exc}")
             return None
         except Exception as exc:
@@ -817,10 +829,10 @@ class EPOConnector:
     def _normalize_exchange_document(
         self,
         doc: ET.Element,
-        provider_record_url: Optional[str] = None,
-        legal_status: Optional[Dict[str, Any]] = None,
+        provider_record_url: str | None = None,
+        legal_status: dict[str, Any] | None = None,
         use_simple_legal_status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Normalize an OPS `exchange-document` element into app record format.
 
@@ -908,7 +920,7 @@ class EPOConnector:
             "date_published": published_date,
         }
 
-    def _normalize_entry(self, entry: ET.Element, use_simple_legal_status: bool = True) -> Dict[str, Any]:
+    def _normalize_entry(self, entry: ET.Element, use_simple_legal_status: bool = True) -> dict[str, Any]:
         """
         Normalize one OPS `entry` into the app's patent record contract.
 
@@ -934,9 +946,9 @@ class EPOConnector:
 
     async def enrich_records_with_legal_status(
         self,
-        records: List[Dict[str, Any]],
+        records: list[dict[str, Any]],
         max_concurrent: int = 5,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Enrich a list of patent records with INPADOC legal status information.
 
@@ -955,7 +967,7 @@ class EPOConnector:
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def enrich_one(record: Dict[str, Any]) -> Dict[str, Any]:
+        async def enrich_one(record: dict[str, Any]) -> dict[str, Any]:
             epo_id = record.get("epo_id")
             if not epo_id:
                 return record
@@ -992,10 +1004,10 @@ class EPOConnector:
     )
     async def search_patents(
         self,
-        query_payload: Dict[str, Any],
+        query_payload: dict[str, Any],
         enrich_legal_status: bool = False,
         use_simple_legal_status: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute an OPS search request and normalize returned records.
 
@@ -1045,8 +1057,8 @@ class EPOConnector:
         timeout = float(self.config.epo_request_timeout_seconds)
 
         try:
-            endpoint_attempts: List[Dict[str, Any]] = []
-            best_result: Optional[Dict[str, Any]] = None
+            endpoint_attempts: list[dict[str, Any]] = []
+            best_result: dict[str, Any] | None = None
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 for endpoint_used in endpoint_candidates:
@@ -1101,7 +1113,7 @@ class EPOConnector:
                     entries = root.findall(".//{*}entry")
                     docs = root.findall(".//{*}exchange-document")
 
-                    total_available: Optional[int] = None
+                    total_available: int | None = None
                     total_node = root.find(".//{*}totalResults")
                     if total_node is not None and total_node.text and total_node.text.strip().isdigit():
                         total_available = int(total_node.text.strip())
@@ -1186,15 +1198,15 @@ class EPOConnector:
 
     def build_keyword_search_query(
         self,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str] = None,
-        positive_keywords: Optional[List[Any]] = None,
-        negative_keywords: Optional[List[str]] = None,
-        patent_status_filter: Optional[List[str]] = None,
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None = None,
+        positive_keywords: list[Any] | None = None,
+        negative_keywords: list[str] | None = None,
+        patent_status_filter: list[str] | None = None,
         language: str = "EN",
-        limit: Optional[int] = 100,
-    ) -> Dict[str, Any]:
+        limit: int | None = 100,
+    ) -> dict[str, Any]:
         """
         Build a provider query payload for OPS search.
 
@@ -1247,7 +1259,7 @@ class EPOConnector:
         )
         logger.debug("EPO strict CQL: %s", cql)
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "cql": cql,
             "limit": limit or 100,
             "offset": 1,
@@ -1255,7 +1267,7 @@ class EPOConnector:
         return payload
 
     @staticmethod
-    def _contains_any_term(text: str, terms: Optional[List[str]]) -> bool:
+    def _contains_any_term(text: str, terms: list[str] | None) -> bool:
         """Return True if any term is present in text, case-insensitive."""
         if not text or not terms:
             return False
@@ -1264,9 +1276,9 @@ class EPOConnector:
 
     def _apply_negative_keyword_filter(
         self,
-        patents: List[Dict[str, Any]],
-        negative_keywords: Optional[List[str]],
-    ) -> List[Dict[str, Any]]:
+        patents: list[dict[str, Any]],
+        negative_keywords: list[str] | None,
+    ) -> list[dict[str, Any]]:
         """
         Apply secondary negative-keyword filtering on normalized records.
 
@@ -1276,7 +1288,7 @@ class EPOConnector:
         if not negative_keywords:
             return patents
 
-        filtered: List[Dict[str, Any]] = []
+        filtered: list[dict[str, Any]] = []
         for patent in patents:
             title_items = patent.get("biblio", {}).get("invention_title", [])
             title_text = " ".join(
@@ -1311,16 +1323,16 @@ class EPOConnector:
 
     async def search_by_jurisdiction(
         self,
-        jurisdiction: Optional[str],
-        start_date: Optional[str],
-        end_date: Optional[str] = None,
-        positive_keywords: Optional[List[Any]] = None,
-        negative_keywords: Optional[List[str]] = None,
-        patent_status_filter: Optional[List[str]] = None,
+        jurisdiction: str | None,
+        start_date: str | None,
+        end_date: str | None = None,
+        positive_keywords: list[Any] | None = None,
+        negative_keywords: list[str] | None = None,
+        patent_status_filter: list[str] | None = None,
         language: str = "EN",
-        limit: Optional[int] = 100,
-        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-    ) -> Dict[str, Any]:
+        limit: int | None = 100,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         """
         Search patents using OPS with compatibility-oriented method signature.
 
@@ -1359,9 +1371,9 @@ class EPOConnector:
                 "EPO strict keyword search aborted: at least one include keyword is required."
             )
 
-        strategy_attempts: List[Dict[str, Any]] = []
-        included_by_id: Dict[str, Dict[str, Any]] = {}
-        endpoint_used_values: List[str] = []
+        strategy_attempts: list[dict[str, Any]] = []
+        included_by_id: dict[str, dict[str, Any]] = {}
+        endpoint_used_values: list[str] = []
 
         total_keywords = len(positive_keywords)
         for index, keyword in enumerate(positive_keywords, start=1):
@@ -1450,7 +1462,7 @@ class EPOConnector:
             negative_keywords,
         )
 
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "data": filtered_records,
             "total": len(filtered_records),
             "provider": "epo",
@@ -1478,20 +1490,20 @@ class EPOConnector:
     async def _probe_positive_terms(
         self,
         *,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str],
-        positive_keywords: List[str],
-        limit: Optional[int],
-    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None,
+        positive_keywords: list[str],
+        limit: int | None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """
         Probe individual positive terms to identify over-restrictive composite queries.
 
         Returns:
             Tuple of (probe diagnostics list, merged unique records list).
         """
-        diagnostics: List[Dict[str, Any]] = []
-        merged_records: Dict[str, Dict[str, Any]] = {}
+        diagnostics: list[dict[str, Any]] = []
+        merged_records: dict[str, dict[str, Any]] = {}
 
         probe_terms = self._clip_terms(positive_keywords, max_terms=MAX_FALLBACK_TERMS)
         for term in probe_terms:
@@ -1538,7 +1550,7 @@ class EPOConnector:
 
         return diagnostics, list(merged_records.values())
 
-    async def get_patent_by_epo_id(self, epo_id: str) -> Optional[Dict[str, Any]]:
+    async def get_patent_by_epo_id(self, epo_id: str) -> dict[str, Any] | None:
         """
         Retrieve a specific patent by EPO DOCDB-style identifier.
 
@@ -1560,7 +1572,7 @@ class EPOConnector:
         records = result.get("data", [])
         return records[0] if records else None
 
-    async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_by_identifier(self, identifier: str) -> dict[str, Any] | None:
         """
         Generic identifier lookup helper for provider-neutral service code.
 
@@ -1572,7 +1584,7 @@ class EPOConnector:
         """
         return await self.get_patent_by_epo_id(identifier)
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform a lightweight OPS connectivity health check.
 

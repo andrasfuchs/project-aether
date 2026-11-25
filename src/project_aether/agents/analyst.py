@@ -1,68 +1,61 @@
 """
 Analyst Agent for Project Aether.
-Performs forensic analysis, semantic scoring, and classification of patent data.
-Based on implementation plan Section 4.1.3.
+Performs forensic legal-status analysis, native-multilingual LLM scoring,
+and intelligence triage of patent records.
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import re
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
-from google import genai
-from google.genai import types
+from pydantic import BaseModel, Field
 
-from project_aether.tools.inpadoc import (
-    analyze_legal_status,
-    StatusAnalysis,
-    StatusSeverity,
-)
 from project_aether.core.config import get_config
-from project_aether.core.keywords import get_flattened_keywords
+from project_aether.core.keyword_helpers import get_active_english_keywords
+from project_aether.core.llm import QuotaExhaustedError, generate_content
 from project_aether.core.llm_scoring import (
     DEFAULT_SCORING_MODEL,
     DEFAULT_SCORING_SYSTEM_PROMPT,
+    DEFAULT_SCORING_THINKING_LEVEL,
     MAX_CONCURRENT_SCORING,
     apply_prompt_placeholders,
 )
 from project_aether.core.scoring_cache import (
-    load_scoring_cache,
-    save_scoring_cache,
     get_cached_score,
+    load_scoring_cache,
     set_cached_score,
+)
+from project_aether.tools.inpadoc import (
+    StatusAnalysis,
+    StatusSeverity,
+    analyze_legal_status,
 )
 
 logger = logging.getLogger("AnalystAgent")
 
-# Global thread pool for all scoring/analysis operations (shared across batches)
 _executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_SCORING)
-
-# Thread-safe lock for scoring cache operations
 _scoring_cache_lock = threading.Lock()
 
 
-class QuotaExhaustedError(Exception):
-    """Raised when API quota is exhausted."""
-    pass
+class PatentScoringResponse(BaseModel):
+    score: float = Field(ge=0, le=100)
+    title_en: str = ""
+    domain_category: str = ""
+    tags: list[str] = Field(default_factory=list)
+    features: list[str] = Field(default_factory=list)
+    rationale: str = ""
 
 
-def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
-    """
-    Safely extract nested field from dictionary using dot notation.
-    
-    Args:
-        data: Dictionary to extract from
-        path: Dot-separated path (e.g., 'biblio.invention_title')
-        default: Default value if path not found
-        
-    Returns:
-        Extracted value or default
-    """
-    keys = path.split('.')
-    current = data
+def _safe_get_nested(data: dict[str, Any], path: str, default: Any = None) -> Any:
+    keys = path.split(".")
+    current: Any = data
     for key in keys:
         if isinstance(current, dict):
             current = current.get(key)
@@ -73,53 +66,85 @@ def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
     return current if current is not None else default
 
 
+def _extract_party_names(parties_data: Any) -> list[str]:
+    names: list[str] = []
+    if not isinstance(parties_data, list):
+        return names
+    for party in parties_data:
+        if not isinstance(party, dict):
+            continue
+        name = None
+        extracted = party.get("extracted_name")
+        if isinstance(extracted, dict):
+            name = extracted.get("value")
+        if not name:
+            name = party.get("name") or party.get("full_name")
+        if name and isinstance(name, str):
+            names.append(name.strip())
+    return names
+
+
 @dataclass
 class PatentAssessment:
-    """
-    Complete assessment of a patent's intelligence value.
-    """
+    """Complete assessment of a patent's intelligence value."""
+
     record_id: str
-    lens_id: Optional[str]
-    epo_id: Optional[str]
+    lens_id: str | None
+    epo_id: str | None
     provider_name: str
-    provider_record_url: Optional[str]
+    provider_record_url: str | None
     jurisdiction: str
     doc_number: str
     title: str
-    inventors: List[str]  # List of inventor names
-    
+    inventors: list[str]
+
     # Legal analysis
     status_analysis: StatusAnalysis
-    
+
     # Semantic analysis
-    relevance_score: float  # 0-100
+    relevance_score: float
     is_anomalous: bool
-    classification_tags: List[str]
-    llm_tags: List[str]
-    llm_features: List[str]
-    
+    classification_tags: list[str]
+    llm_tags: list[str]
+    llm_features: list[str]
+
     # Summary
     intelligence_value: str  # "HIGH", "MEDIUM", "LOW"
     summary: str
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+
+    # Extended metadata
+    title_en: str | None = None
+    domain_category: str = ""
+    rationale: str = ""
+    legal_history_url: str | None = None
+    date_published: str | None = None
+    applicants: list[str] = field(default_factory=list)
+    all_classifications: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "record_id": self.record_id,
             "lens_id": self.lens_id,
             "epo_id": self.epo_id,
             "provider_name": self.provider_name,
             "provider_record_url": self.provider_record_url,
+            "legal_history_url": self.legal_history_url,
             "jurisdiction": self.jurisdiction,
             "doc_number": self.doc_number,
+            "date_published": self.date_published,
             "title": self.title,
+            "title_en": self.title_en,
             "inventors": self.inventors,
+            "applicants": self.applicants,
             "status_analysis": self.status_analysis.to_dict(),
             "relevance_score": self.relevance_score,
             "is_anomalous": self.is_anomalous,
             "classification_tags": self.classification_tags,
+            "all_classifications": self.all_classifications,
             "llm_tags": self.llm_tags,
             "llm_features": self.llm_features,
+            "domain_category": self.domain_category,
+            "rationale": self.rationale,
             "intelligence_value": self.intelligence_value,
             "summary": self.summary,
         }
@@ -128,314 +153,282 @@ class PatentAssessment:
 class AnalystAgent:
     """
     The Domain Expert Agent.
-    Performs forensic analysis and semantic scoring of patent data.
-
-     Parameters
-     ----------
-     keyword_config : Optional[Dict]
-          Optional language-keyed keyword configuration. When provided, the agent
-          flattens this structure into two lists via `get_flattened_keywords()`:
-          - `anomalous_keywords`: terms indicating anomalous phenomena
-          - `false_positive_keywords`: terms indicating conventional technology
-        If omitted, empty keyword lists are used.
-
-     Working Methods (Pipeline)
-     --------------------------
-     1) Legal Status Forensics
-         Uses `analyze_legal_status()` to interpret jurisdiction-specific
-         INPADOC event codes and patent status. This produces `StatusAnalysis`
-         with a `severity` of `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` based on
-         refusal/withdrawal/lapse semantics from the INPADOC code database.
-
-     2) Relevance Score Calculation (0-100)
-         Computed in `_calculate_relevance_score(text)` using simple keyword
-         matching on lowercased title + abstract + claims:
-
-         - +15 points per anomalous keyword hit
-         - -20 points per false-positive keyword hit
-         - +10 points if "hydrogen" or "deuterium" present
-         - +10 points if "plasma" or "discharge" present
-
-         The final score is clamped to the range $[0, 100]$.
-
-     3) Anomalous Flag
-         `_is_anomalous_content(text)` returns True if any anomalous keyword is
-         present, or if "over-unity"/"excess" appears alongside "energy"/"heat".
-
-     4) Classification Tag Extraction
-         `_extract_classification_tags(patent_record)` inspects IPC/CPC symbols
-         under `biblio.classifications_ipcr` and `biblio.classifications_cpc`.
-         Any symbol containing a high-value classification marker in
-         `self.high_value_classifications` is added to `classification_tags`.
-
-     5) Intelligence Value Decision
-         `_determine_intelligence_value(...)` applies rule-based thresholds:
-         - HIGH: severity HIGH + relevance >= 50 + anomalous, OR any high-value
-            classification with severity HIGH.
-         - MEDIUM: relevance >= 40 + anomalous, OR severity HIGH with low relevance.
-         - LOW: default fallback.
+    Performs forensic analysis and native-multilingual LLM scoring of patent data.
     """
-    
+
     def __init__(
         self,
-        keyword_config: Optional[Dict] = None,
-        scoring_system_prompt: Optional[str] = None,
-        scoring_model: Optional[str] = None,
+        keyword_config: dict[str, Any] | None = None,
+        scoring_system_prompt: str | None = None,
+        scoring_model: str | None = None,
+        scoring_thinking_level: str | None = None,
+        relevance_threshold: float = 40.0,
+        high_threshold: float = 70.0,
+        calibration_examples: str = "",
     ):
         self.logger = logger
         self.config = get_config()
         self.scoring_system_prompt = scoring_system_prompt or DEFAULT_SCORING_SYSTEM_PROMPT
-        self.scoring_model = scoring_model or DEFAULT_SCORING_MODEL
+        self.scoring_model = scoring_model or self.config.llm_scoring_model or DEFAULT_SCORING_MODEL
+        self.scoring_thinking_level = (
+            scoring_thinking_level
+            or self.config.llm_scoring_thinking_level
+            or DEFAULT_SCORING_THINKING_LEVEL
+        )
+        self.relevance_threshold = float(relevance_threshold)
+        self.high_threshold = max(float(high_threshold), self.relevance_threshold)
+        self.calibration_examples = calibration_examples or ""
         self.scoring_cache = load_scoring_cache()
 
         active_keyword_config = keyword_config or {"English": {"positive": [], "negative": []}}
-        self.anomalous_keywords, self.false_positive_keywords = get_flattened_keywords(active_keyword_config)
-        
-        # High-value IPC/CPC classifications
+        self.positive_groups, self.false_positive_keywords = get_active_english_keywords(
+            active_keyword_config
+        )
+        self.anomalous_keywords = sorted(
+            {term for group in self.positive_groups for term in group if term}
+        )
+
+        # Precompute deterministic system prompt once for batch prefix-cache efficiency
+        self._resolved_system_prompt = apply_prompt_placeholders(
+            self.scoring_system_prompt,
+            self.positive_groups,
+            self.false_positive_keywords,
+            calibration_examples=self.calibration_examples,
+        )
+
         self.high_value_classifications = {
             "G21B 3/00",  # Low temperature nuclear fusion
-            "H01J 37/00", # Discharge tubes
+            "H01J 37/00",  # Discharge tubes
             "H05H 1/00",  # Plasma technique
             "C25B 1/00",  # Electrolytic production
         }
-    
-    def analyze_patent(self, patent_record: Dict, progress_callback=None) -> PatentAssessment:
-        """
-        Perform complete analysis of a single patent.
-        
-        Args:
-            patent_record: Patent data from Lens.org API
-                          May include pre-translated fields: title_en, abstract_en, claims_en
-            progress_callback: Optional callable for signaling progress updates
-            
-        Returns:
-            PatentAssessment with complete analysis
-        """
-        # Extract basic info
-        record_id = patent_record.get("record_id") or patent_record.get("lens_id") or patent_record.get("epo_id") or "UNKNOWN"
+
+    def analyze_patent(
+        self,
+        patent_record: dict[str, Any],
+        progress_callback: Callable[..., Any] | None = None,
+    ) -> PatentAssessment:
+        _ = progress_callback
+        record_id = (
+            patent_record.get("record_id")
+            or patent_record.get("lens_id")
+            or patent_record.get("epo_id")
+            or "UNKNOWN"
+        )
         lens_id = patent_record.get("lens_id")
         epo_id = patent_record.get("epo_id")
         provider_name = patent_record.get("provider_name", "unknown")
         provider_record_url = patent_record.get("provider_record_url")
+        legal_history_url = patent_record.get("legal_history_url")
         jurisdiction = patent_record.get("jurisdiction", "UNKNOWN")
         doc_number = patent_record.get("doc_number", "UNKNOWN")
-        
-        # Extract title from nested structure (always use original, not translation)
+        date_published = patent_record.get("date_published")
+
         title_data = _safe_get_nested(patent_record, "biblio.invention_title")
-        if isinstance(title_data, list) and len(title_data) > 0:
-            title = title_data[0].get("text", "Untitled") if isinstance(title_data[0], dict) else str(title_data[0])
+        if isinstance(title_data, list) and title_data:
+            first = title_data[0]
+            title = first.get("text", "Untitled") if isinstance(first, dict) else str(first)
+        elif isinstance(title_data, dict):
+            title = title_data.get("text", "Untitled")
         elif isinstance(title_data, str):
             title = title_data
         else:
             title = "Untitled"
-        
-        # Extract inventors from nested structure
-        inventors_data = _safe_get_nested(patent_record, "biblio.parties.inventors", [])
-        inventors = []
-        
-        if isinstance(inventors_data, list):
-            for inv in inventors_data:
-                if isinstance(inv, dict):
-                    # Try multiple fields where name might be
-                    name = None
-                    if "extracted_name" in inv and isinstance(inv["extracted_name"], dict):
-                        name = inv["extracted_name"].get("value")  # Changed from 'name' to 'value'
-                    if not name:
-                        name = inv.get("name")
-                    if not name:
-                        name = inv.get("full_name")
-                    if name and isinstance(name, str):
-                        inventors.append(name)
-        
-        #logger.info(f"🔬 Analyzing patent: {record_id} ({jurisdiction})")
-        
-        # 1. Legal Status Forensics
+
+        inventors = _extract_party_names(
+            _safe_get_nested(patent_record, "biblio.parties.inventors", [])
+        )
+        applicants = _extract_party_names(
+            _safe_get_nested(patent_record, "biblio.parties.applicants", [])
+        )
+
         status_analysis = analyze_legal_status(patent_record)
-        
-        # 2. Semantic Analysis
-        # Extract and use English versions when available
-        
-        # Extract abstract (prefer English translation if available)
-        abstract_data = patent_record.get("abstract_en")
-        if not abstract_data:
-            abstract_data = patent_record.get("abstract", "")
-        if isinstance(abstract_data, list) and len(abstract_data) > 0:
-            abstract = abstract_data[0].get("text", "") if isinstance(abstract_data[0], dict) else str(abstract_data[0])
+
+        # Prefer English abstract if already available on record, otherwise native abstract
+        abstract_data = patent_record.get("abstract_en") or patent_record.get("abstract", "")
+        if isinstance(abstract_data, list) and abstract_data:
+            en_item = next(
+                (a for a in abstract_data if isinstance(a, dict) and a.get("lang") == "en"),
+                None,
+            )
+            chosen = en_item or abstract_data[0]
+            abstract = chosen.get("text", "") if isinstance(chosen, dict) else str(chosen)
         else:
             abstract = str(abstract_data) if abstract_data else ""
-        
-        # Extract claims (prefer English translation if available)
-        claims_data = patent_record.get("claims_en")
-        if not claims_data:
-            claims_data = patent_record.get("claims", "")
-        if isinstance(claims_data, list) and len(claims_data) > 0:
-            claims = claims_data[0].get("text", "") if isinstance(claims_data[0], dict) else str(claims_data[0])
+
+        claims_data = patent_record.get("claims_en") or patent_record.get("claims", "")
+        if isinstance(claims_data, list) and claims_data:
+            first_claim = claims_data[0]
+            claims = (
+                first_claim.get("text", "")
+                if isinstance(first_claim, dict)
+                else str(first_claim)
+            )
         else:
             claims = str(claims_data) if claims_data else ""
-        
-        full_text = f"{title} {abstract} {claims}".lower()
 
-        english_title = str(patent_record.get("title_en") or title)
-        english_abstract = str(patent_record.get("abstract_en") or abstract)
+        classification_tags, all_classifications = self._extract_classification_tags(patent_record)
 
-        llm_result = self._score_with_llm(record_id, english_title, english_abstract, jurisdiction)
+        llm_result = self._score_with_llm(
+            record_id=record_id,
+            title=title,
+            abstract=abstract,
+            jurisdiction=jurisdiction,
+            classifications=all_classifications,
+            status_summary=status_analysis.interpretation,
+        )
         relevance_score = llm_result["score"]
+        title_en = llm_result.get("title_en") or patent_record.get("title_en") or None
+        if title_en and title_en.strip().lower() == title.strip().lower():
+            title_en = None
+        domain_category = llm_result.get("domain_category", "")
+        rationale = llm_result.get("rationale", "")
         llm_tags = llm_result["tags"]
         llm_features = llm_result["features"]
-        is_anomalous = self._is_anomalous_content(full_text)
-        classification_tags = self._extract_classification_tags(patent_record)
 
-        
-        # 3. Determine Intelligence Value
+        searchable_text = f"{title_en or title} {abstract} {claims}".lower()
+        is_anomalous = self._is_anomalous_content(searchable_text)
+
         intelligence_value = self._determine_intelligence_value(
             status_analysis,
             relevance_score,
-            is_anomalous,
             classification_tags,
         )
-        
-        # 4. Generate Summary
+
         summary = self._generate_summary(
             status_analysis,
             relevance_score,
             is_anomalous,
             classification_tags,
         )
-        
+
         return PatentAssessment(
             record_id=record_id,
             lens_id=lens_id,
             epo_id=epo_id,
             provider_name=provider_name,
             provider_record_url=provider_record_url,
+            legal_history_url=legal_history_url,
             jurisdiction=jurisdiction,
             doc_number=doc_number,
+            date_published=date_published,
             title=title,
+            title_en=title_en,
             inventors=inventors,
+            applicants=applicants,
             status_analysis=status_analysis,
             relevance_score=relevance_score,
             is_anomalous=is_anomalous,
             classification_tags=classification_tags,
+            all_classifications=all_classifications,
             llm_tags=llm_tags,
             llm_features=llm_features,
+            domain_category=domain_category,
+            rationale=rationale,
             intelligence_value=intelligence_value,
             summary=summary,
         )
-    
+
     def _calculate_relevance_score(self, text: str) -> float:
-        """
-        Calculate relevance score based on keyword presence.
-        Legacy scoring used only as a fallback when LLM scoring fails.
-        
-        Args:
-            text: Combined patent text (title + abstract + claims)
-            
-        Returns:
-            Score from 0-100
-        """
+        """Fallback keyword-based relevance score when LLM key is absent."""
         score = 0.0
-        
-        # Check for anomalous keywords (high value)
-        anomalous_hits = sum(
-            1 for keyword in self.anomalous_keywords
-            if keyword.lower() in text
-        )
-        score += anomalous_hits * 15  # 15 points per anomalous keyword
-        
-        # Check for false positive keywords (negative points)
+        anomalous_hits = sum(1 for kw in self.anomalous_keywords if kw.lower() in text)
+        score += anomalous_hits * 15
         false_positive_hits = sum(
-            1 for keyword in self.false_positive_keywords
-            if keyword.lower() in text
+            1 for kw in self.false_positive_keywords if kw.lower() in text
         )
-        score -= false_positive_hits * 20  # -20 points per false positive
-        
-        # General hydrogen + plasma/spark presence (baseline)
+        score -= false_positive_hits * 20
         if "hydrogen" in text or "deuterium" in text:
             score += 10
         if "plasma" in text or "discharge" in text:
             score += 10
-        
-        # Clamp to 0-100 range
         return max(0.0, min(100.0, score))
 
-    def _score_with_llm(self, record_id: str, title: str, abstract: str, jurisdiction: str) -> Dict[str, Any]:
-        system_prompt = apply_prompt_placeholders(
-            self.scoring_system_prompt,
-            self.anomalous_keywords,
-            self.false_positive_keywords,
-        )
-        cached = get_cached_score(
-            self.scoring_cache,
-            record_id,
-            title,
-            abstract,
-            system_prompt,
-            self.scoring_model,
-        )
+    def _score_with_llm(
+        self,
+        *,
+        record_id: str,
+        title: str,
+        abstract: str,
+        jurisdiction: str,
+        classifications: list[str],
+        status_summary: str,
+    ) -> dict[str, Any]:
+        with _scoring_cache_lock:
+            cached = get_cached_score(
+                self.scoring_cache,
+                record_id,
+                title,
+                abstract,
+                self._resolved_system_prompt,
+                self.scoring_model,
+                self.scoring_thinking_level,
+            )
         if cached:
             cached_score = float(cached.get("score", 0.0))
-            logger.info(f"Using cached score for {record_id} ({jurisdiction}): {cached_score:.2f}")
+            logger.debug(
+                "Using cached score for %s (%s): %.2f",
+                record_id,
+                jurisdiction,
+                cached_score,
+            )
             return {
                 "score": cached_score,
+                "title_en": cached.get("title_en") or "",
+                "domain_category": cached.get("domain_category") or "",
                 "tags": cached.get("tags", []) or [],
                 "features": cached.get("features", []) or [],
+                "rationale": cached.get("rationale") or "",
             }
 
         if not self.config.google_api_key:
             logger.warning("LLM scoring skipped: GEMINI_API_KEY not configured")
-            return {"score": 0.0, "tags": [], "features": []}
+            return {
+                "score": 0.0,
+                "title_en": "",
+                "domain_category": "",
+                "tags": [],
+                "features": [],
+                "rationale": "LLM scoring skipped (no GEMINI_API_KEY).",
+            }
 
-        positive_keywords = ", ".join(self.anomalous_keywords) or "None"
-        negative_keywords = ", ".join(self.false_positive_keywords) or "None"
+        ipc_text = ", ".join(classifications[:10]) if classifications else "None"
         user_prompt = (
+            f"Jurisdiction: {jurisdiction}\n"
+            f"IPC/CPC: {ipc_text}\n"
+            f"Legal Status: {status_summary}\n\n"
             f"Title:\n{title}\n\n"
-            f"Abstract:\n{abstract}\n\n"
-            f"Positive keywords:\n{positive_keywords}\n\n"
-            f"Negative keywords:\n{negative_keywords}\n\n"
-            "Return JSON only as {\"score\": number, \"tags\": [\"term\", ...], "
-            "\"features\": [\"short phrase\", ...]}."
+            f"Abstract:\n{abstract}"
         )
 
-        client = genai.Client(api_key=self.config.google_api_key)
-        
-        try:
-            response = client.models.generate_content(
-                model=self.scoring_model,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.2,
-                    response_mime_type="application/json",
-                    thinking_config=types.ThinkingConfig(
-                        thinking_level=types.ThinkingLevel.LOW
-                    ),
-                ),
-            )
-        except Exception as e:
-            error_msg = str(e)
-            # Check for quota exhaustion (429 error)
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg or "quota" in error_msg.lower():
-                logger.error(f"Gemini API quota exhausted: {error_msg}")
-                raise QuotaExhaustedError(
-                    "Gemini API quota exceeded. Please check your plan and billing details at "
-                    "https://ai.google.dev/gemini-api/docs/rate-limits or try again later."
-                ) from e
-            # Re-raise other errors
-            raise
+        response = generate_content(
+            api_key=self.config.google_api_key,
+            model=self.scoring_model,
+            contents=user_prompt,
+            system_instruction=self._resolved_system_prompt,
+            temperature=0.1,
+            thinking_level=self.scoring_thinking_level,
+            response_schema=PatentScoringResponse,
+            response_mime_type="application/json",
+        )
 
         parsed = self._parse_llm_json(response.text or "{}")
-        score = float(parsed.get("score", 0.0))
-        score = max(0.0, min(100.0, score))
-        logger.info(f"Determined LLM score for {record_id} ({jurisdiction}): {score:.2f}")
-        tags = parsed.get("tags") or []
-        if not isinstance(tags, list):
-            tags = [str(tags)]
-        tags = [str(tag).strip() for tag in tags if str(tag).strip()]
+        score = max(0.0, min(100.0, float(parsed.get("score", 0.0))))
+        title_en = str(parsed.get("title_en") or "").strip()
+        domain_category = str(parsed.get("domain_category") or "").strip()
+        rationale = str(parsed.get("rationale") or "").strip()
 
-        features = parsed.get("features") or []
-        if not isinstance(features, list):
-            features = [str(features)]
-        features = [str(feature).strip() for feature in features if str(feature).strip()]
+        raw_tags = parsed.get("tags") or []
+        if not isinstance(raw_tags, list):
+            raw_tags = [str(raw_tags)]
+        tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+
+        raw_features = parsed.get("features") or []
+        if not isinstance(raw_features, list):
+            raw_features = [str(raw_features)]
+        features = [str(f).strip() for f in raw_features if str(f).strip()]
+
+        logger.debug("Determined LLM score for %s (%s): %.2f", record_id, jurisdiction, score)
 
         with _scoring_cache_lock:
             set_cached_score(
@@ -443,22 +436,32 @@ class AnalystAgent:
                 record_id=record_id,
                 title=title,
                 abstract=abstract,
-                system_message=system_prompt,
+                system_message=self._resolved_system_prompt,
                 model=self.scoring_model,
+                thinking_level=self.scoring_thinking_level,
                 score=score,
+                title_en=title_en,
+                domain_category=domain_category,
                 tags=tags,
                 features=features,
+                rationale=rationale,
+                persist=True,
             )
-            save_scoring_cache(self.scoring_cache)
 
-        return {"score": score, "tags": tags, "features": features}
+        return {
+            "score": score,
+            "title_en": title_en,
+            "domain_category": domain_category,
+            "tags": tags,
+            "features": features,
+            "rationale": rationale,
+        }
 
-    def _parse_llm_json(self, text: str) -> Dict[str, Any]:
+    def _parse_llm_json(self, text: str) -> dict[str, Any]:
         cleaned = text.strip()
         if cleaned.startswith("```"):
             cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
             cleaned = re.sub(r"\s*```$", "", cleaned)
-
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
@@ -468,153 +471,96 @@ class AnalystAgent:
                     return json.loads(match.group(0))
                 except json.JSONDecodeError:
                     pass
-
         return {}
-    
+
     def _is_anomalous_content(self, text: str) -> bool:
-        """
-        Determine if content describes anomalous phenomena.
-        
-        Args:
-            text: Combined patent text
-            
-        Returns:
-            True if anomalous content detected
-        """
-        # Check if any anomalous keywords present
         for keyword in self.anomalous_keywords:
             if keyword.lower() in text:
                 return True
-        
-        # Check for over-unity claims
-        if "over-unity" in text or "excess" in text:
-            if "energy" in text or "heat" in text:
-                return True
-        
-        return False
-    
-    def _extract_classification_tags(self, patent_record: Dict) -> List[str]:
-        """
-        Extract relevant IPC/CPC classification tags.
-        
-        Args:
-            patent_record: Patent data
-            
-        Returns:
-            List of relevant classification codes
-        """
-        tags = []
-        
-        # Check IPC classifications (nested in biblio)
-        ipcr = _safe_get_nested(patent_record, "biblio.classifications_ipcr", [])
-        for classification in ipcr:
-            if isinstance(classification, dict):
-                symbol = classification.get("symbol", "")
-                # Extract main group (e.g., "G21B 3/00")
-                if any(hv in symbol for hv in self.high_value_classifications):
-                    tags.append(symbol)
-        
-        # Check CPC classifications (nested in biblio)
-        cpc = _safe_get_nested(patent_record, "biblio.classifications_cpc", [])
-        for classification in cpc:
-            if isinstance(classification, dict):
-                symbol = classification.get("symbol", "")
-                if any(hv in symbol for hv in self.high_value_classifications):
-                    tags.append(symbol)
-        
-        return list(set(tags))  # Remove duplicates
-    
+        return bool(("over-unity" in text or "excess" in text) and ("energy" in text or "heat" in text))
+
+    def _extract_classification_tags(
+        self, patent_record: dict[str, Any]
+    ) -> tuple[list[str], list[str]]:
+        high_value_tags: list[str] = []
+        all_symbols: list[str] = []
+
+        for field_path in ("biblio.classifications_ipcr", "biblio.classifications_cpc"):
+            items = _safe_get_nested(patent_record, field_path, [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if isinstance(item, dict):
+                    symbol = str(item.get("symbol") or "").strip()
+                    if symbol:
+                        all_symbols.append(symbol)
+                        if any(hv in symbol for hv in self.high_value_classifications):
+                            high_value_tags.append(symbol)
+
+        return list(dict.fromkeys(high_value_tags)), list(dict.fromkeys(all_symbols))
+
     def _determine_intelligence_value(
         self,
         status_analysis: StatusAnalysis,
         relevance_score: float,
-        is_anomalous: bool,
-        classification_tags: List[str],
+        classification_tags: list[str],
     ) -> str:
         """
-        Determine overall intelligence value of the patent.
-        
-        Returns:
-            "HIGH", "MEDIUM", or "LOW"
+        Determine priority tier driven primarily by relevance score,
+        boosted when substantive refusal or high-value IPC/CPC codes are present.
         """
-        # High priority: substantive rejection + high relevance + anomalous
-        if (
-            status_analysis.severity == StatusSeverity.HIGH
-            and relevance_score >= 50
-            and is_anomalous
+        if relevance_score >= self.high_threshold:
+            return "HIGH"
+
+        if relevance_score >= self.relevance_threshold and (
+            status_analysis.severity == StatusSeverity.HIGH or bool(classification_tags)
         ):
             return "HIGH"
-        
-        # High priority: high-value classification regardless of score
-        if classification_tags and status_analysis.severity == StatusSeverity.HIGH:
-            return "HIGH"
-        
-        # Medium priority: good relevance but not refused
-        if relevance_score >= 40 and is_anomalous:
+
+        if relevance_score >= self.relevance_threshold:
             return "MEDIUM"
-        
-        # Medium priority: refused but low relevance
-        if status_analysis.severity == StatusSeverity.HIGH:
+
+        if status_analysis.severity == StatusSeverity.HIGH and relevance_score >= 25.0:
             return "MEDIUM"
-        
-        # Default to low
+
         return "LOW"
-    
+
     def _generate_summary(
         self,
         status_analysis: StatusAnalysis,
         relevance_score: float,
         is_anomalous: bool,
-        classification_tags: List[str],
+        classification_tags: list[str],
     ) -> str:
-        """
-        Generate human-readable summary of the analysis.
-        
-        Returns:
-            Summary string
-        """
         parts = []
-        
-        # Legal status summary
         if status_analysis.is_refused:
             parts.append(f"🚨 Substantively refused: {status_analysis.refusal_reason}")
         elif status_analysis.is_withdrawn:
-            parts.append(f"⚠️ Withdrawn by applicant")
+            parts.append("⚠️ Withdrawn by applicant")
         else:
             parts.append(f"ℹ️ {status_analysis.interpretation}")
-        
-        # Relevance summary
-        if relevance_score >= 70:
+
+        if relevance_score >= self.high_threshold:
             parts.append(f"📊 High relevance score: {relevance_score:.0f}/100")
-        elif relevance_score >= 40:
+        elif relevance_score >= self.relevance_threshold:
             parts.append(f"📊 Moderate relevance: {relevance_score:.0f}/100")
         else:
             parts.append(f"📊 Low relevance: {relevance_score:.0f}/100")
-        
-        # Anomalous flag
+
         if is_anomalous:
             parts.append("⚡ Contains anomalous phenomena terminology")
-        
-        # Classifications
         if classification_tags:
             parts.append(f"🏷️ High-value classifications: {', '.join(classification_tags)}")
-        
         return " | ".join(parts)
-    
-    def analyze_batch(self, patent_records: List[Dict], progress_callback=None) -> List[PatentAssessment]:
-        """
-        Analyze multiple patents in batch.
-        
-        Args:
-            patent_records: List of patent records from the active provider
-            progress_callback: Optional callable that accepts (completed_count, total_count, message)
-            
-        Returns:
-            List of PatentAssessment objects
-        """
-        assessments_by_index: List[Optional[PatentAssessment]] = [None] * len(patent_records)
+
+    def analyze_batch(
+        self,
+        patent_records: list[dict[str, Any]],
+        progress_callback: Callable[[int, int, str, PatentAssessment | None], None] | None = None,
+    ) -> list[PatentAssessment]:
+        assessments_by_index: list[PatentAssessment | None] = [None] * len(patent_records)
         completed_count = 0
-        
+
         future_to_index = {
             _executor.submit(self.analyze_patent, record): index
             for index, record in enumerate(patent_records)
@@ -625,70 +571,43 @@ class AnalystAgent:
             try:
                 assessment = future.result()
                 assessments_by_index[index] = assessment
-                
                 completed_count += 1
-                
+
                 if progress_callback:
-                    # Provide gradual feedback after each assessment
                     msg = f"Analyzed {completed_count}/{len(patent_records)} patents"
                     progress_callback(completed_count, len(patent_records), msg, assessment)
 
                 if assessment.intelligence_value == "HIGH":
                     logger.info(
-                        f"🎯 HIGH VALUE TARGET: {assessment.record_id} "
-                        f"({assessment.jurisdiction}) - {assessment.summary}"
+                        "🎯 HIGH VALUE TARGET: %s (%s) - %s",
+                        assessment.record_id,
+                        assessment.jurisdiction,
+                        assessment.summary,
                     )
             except QuotaExhaustedError:
-                for pending_future in future_to_index:
-                    pending_future.cancel()
+                for pending in future_to_index:
+                    pending.cancel()
                 raise
-            except Exception as e:
-                logger.error(f"Failed to analyze patent: {e}")
+            except Exception as exc:
+                logger.error("Failed to analyze patent: %s", exc)
                 completed_count += 1
                 if progress_callback:
                     msg = f"Analyzed {completed_count}/{len(patent_records)} patents"
                     progress_callback(completed_count, len(patent_records), msg, None)
 
-        return [assessment for assessment in assessments_by_index if assessment is not None]
-    
-    def filter_high_priority(
-        self,
-        assessments: List[PatentAssessment]
-    ) -> List[PatentAssessment]:
-        """
-        Filter only high-priority assessments.
-        
-        Args:
-            assessments: List of all assessments
-            
-        Returns:
-            List of high-priority assessments only
-        """
+        results = [a for a in assessments_by_index if a is not None]
+        high_n = sum(1 for a in results if a.intelligence_value == "HIGH")
+        med_n = sum(1 for a in results if a.intelligence_value == "MEDIUM")
+        low_n = len(results) - high_n - med_n
+        logger.info(
+            "Batch scoring complete: %d/%d patents (HIGH=%d, MEDIUM=%d, LOW=%d)",
+            len(results),
+            len(patent_records),
+            high_n,
+            med_n,
+            low_n,
+        )
+        return results
+
+    def filter_high_priority(self, assessments: list[PatentAssessment]) -> list[PatentAssessment]:
         return [a for a in assessments if a.intelligence_value == "HIGH"]
-
-
-# Convenience function for agent graph integration
-async def analyze_batch(state: Dict) -> Dict:
-    """
-    Agent node function for LangGraph integration.
-    Analyzes patents from the state.
-    
-    Args:
-        state: Mission state with raw_patents
-        
-    Returns:
-        Updated state with analyzed_artifacts
-    """
-    raw_patents = state.get("raw_patents", [])
-    
-    if not raw_patents:
-        logger.warning("No patents to analyze")
-        return {"analyzed_artifacts": []}
-    
-    analyst = AnalystAgent()
-    assessments = analyst.analyze_batch(raw_patents)
-    
-    # Convert to dict format for state
-    artifacts = [a.to_dict() for a in assessments]
-    
-    return {"analyzed_artifacts": artifacts}

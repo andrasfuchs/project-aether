@@ -4,7 +4,6 @@ import streamlit as st
 
 from project_aether.core.log_stream import get_log_stream_handler
 
-
 LOG_LEVEL_OPTIONS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
@@ -41,7 +40,9 @@ def render_live_logs_tab() -> None:
             placeholder="quota, translation, failed...",
         )
 
-    action_col1, action_col2, action_col3, action_col4 = st.columns([1, 1, 1.2, 2.8])
+    action_col1, action_col2, action_col3, action_col4 = st.columns(
+        [1, 1, 1.3, 2.7], vertical_alignment="bottom"
+    )
     with action_col1:
         refresh_clicked = st.button("Refresh", key="live_logs_refresh")
     with action_col2:

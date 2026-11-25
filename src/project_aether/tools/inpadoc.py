@@ -5,9 +5,9 @@ Based on implementation plan Section 5.2 and 10.2.
 """
 
 import logging
-from typing import Dict, List, Optional, Any
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger("INPADOCDecoder")
 
@@ -34,12 +34,12 @@ class StatusAnalysis:
     is_pending: bool
     severity: StatusSeverity
     refusal_reason: str
-    code_found: Optional[str]
+    code_found: str | None
     jurisdiction: str
     interpretation: str
-    original_status: Optional[str] = None
+    original_status: str | None = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "is_refused": self.is_refused,
@@ -216,6 +216,43 @@ INPADOC_CODES = {
         },
     },
     
+    # === HUNGARY (HU) ===
+    "HU": {
+        "MM4A": {
+            "description": "Lapsed Due to Non-Payment",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Administrative lapse.",
+        },
+        "R": {
+            "description": "Application Refused",
+            "severity": StatusSeverity.HIGH,
+            "interpretation": "Substantive refusal by Hungarian Intellectual Property Office.",
+        },
+    },
+
+    # === UNITED STATES (US) ===
+    "US": {
+        "FP": {
+            "description": "Expired Due to Failure to Pay Maintenance Fee",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Administrative lapse due to unpaid maintenance fee.",
+        },
+        "REMI": {
+            "description": "Reissue / Examination Action",
+            "severity": StatusSeverity.LOW,
+            "interpretation": "Prosecution or post-grant action.",
+        },
+    },
+
+    # === GERMANY (DE) ===
+    "DE": {
+        "R019": {
+            "description": "Application Refused / Rejected",
+            "severity": StatusSeverity.HIGH,
+            "interpretation": "Substantive refusal by DPMA.",
+        },
+    },
+
     # === FINLAND (FI) ===
     "FI": {
         "MM": {
@@ -227,7 +264,7 @@ INPADOC_CODES = {
 }
 
 
-def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
+def analyze_legal_status(patent_record: dict) -> StatusAnalysis:
     """
     Decode INPADOC codes to determine if a patent was refused or just withdrawn.
     Critical for distinguishing failed science from bankrupt inventors.
@@ -278,13 +315,7 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
             analysis.refusal_reason = f"Patent Status: {patent_status}"
             analysis.interpretation = f"🚨 Patent marked as {patent_status}"
             #logger.info(f"Patent refused based on status: {patent_status}")
-        elif "WITHDRAWN" in patent_status:
-            analysis.is_withdrawn = True
-            analysis.severity = StatusSeverity.MEDIUM
-            analysis.refusal_reason = f"Patent Status: {patent_status}"
-            analysis.interpretation = f"⚠️ Patent marked as {patent_status}"
-            #logger.info(f"Patent withdrawn based on status: {patent_status}")
-        elif "DISCONTINUED" in patent_status:
+        elif "WITHDRAWN" in patent_status or "DISCONTINUED" in patent_status:
             analysis.is_withdrawn = True
             analysis.severity = StatusSeverity.MEDIUM
             analysis.refusal_reason = f"Patent Status: {patent_status}"
@@ -324,6 +355,13 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
     if not events:
         #logger.warning(f"No legal events found for patent in {jurisdiction}")
         return analysis
+
+    # Ensure events are sorted chronologically ascending (oldest first, newest last)
+    if len(events) > 1:
+        try:
+            events = sorted(events, key=lambda e: str(e.get("date", "")))
+        except Exception as exc:
+            logger.debug("Could not sort INPADOC events: %s", exc)
     
     # Get jurisdiction-specific code database
     jurisdiction_codes = INPADOC_CODES.get(jurisdiction, {})
@@ -432,7 +470,7 @@ def analyze_legal_status(patent_record: Dict) -> StatusAnalysis:
     return analysis
 
 
-def is_high_value_rejection(patent_record: Dict) -> bool:
+def is_high_value_rejection(patent_record: dict) -> bool:
     """
     Quick check if a patent is a high-value rejection.
     Returns True for substantive rejections (FC9A in Russia, R in EPO, etc.)
@@ -447,7 +485,7 @@ def is_high_value_rejection(patent_record: Dict) -> bool:
     return analysis.severity == StatusSeverity.HIGH and analysis.is_refused
 
 
-def batch_analyze_patents(patent_records: List[Dict]) -> List[StatusAnalysis]:
+def batch_analyze_patents(patent_records: list[dict]) -> list[StatusAnalysis]:
     """
     Analyze multiple patents in batch.
     
@@ -476,7 +514,7 @@ def batch_analyze_patents(patent_records: List[Dict]) -> List[StatusAnalysis]:
                     is_active=False,
                     is_pending=False,
                     severity=StatusSeverity.UNKNOWN,
-                    refusal_reason=f"Analysis failed: {str(e)}",
+                    refusal_reason=f"Analysis failed: {e!s}",
                     code_found=None,
                     jurisdiction="UNKNOWN",
                     interpretation="Error during analysis",
@@ -486,7 +524,7 @@ def batch_analyze_patents(patent_records: List[Dict]) -> List[StatusAnalysis]:
     return results
 
 
-def get_rejection_statistics(analyses: List[StatusAnalysis]) -> Dict[str, int]:
+def get_rejection_statistics(analyses: list[StatusAnalysis]) -> dict[str, int]:
     """
     Generate statistics from a batch of status analyses.
     

@@ -6,14 +6,16 @@ Follows the implementation plan from Section 10.1.
 
 import asyncio
 import logging
-from typing import Dict, List, Any, Optional, Callable
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 from tenacity import (
     retry,
-    wait_fixed,
     retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
 )
 
 from project_aether.core.config import get_config
@@ -48,12 +50,10 @@ JURISDICTION_NAMES = {
 
 class LensAPIError(Exception):
     """Custom exception for Lens.org API failures."""
-    pass
 
 
 class RateLimitError(Exception):
     """Raised when API rate limit is hit."""
-    pass
 
 
 class LensConnector:
@@ -64,7 +64,7 @@ class LensConnector:
     Based on implementation plan Section 10.1.
     """
     
-    def __init__(self, api_token: Optional[str] = None):
+    def __init__(self, api_token: str | None = None):
         """
         Initialize the Lens connector.
         
@@ -88,7 +88,7 @@ class LensConnector:
         self._window_start = datetime.now()
 
     @staticmethod
-    def _normalize_lens_patent_record(patent: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_lens_patent_record(patent: dict[str, Any]) -> dict[str, Any]:
         """
         Normalize a Lens patent record to the provider-neutral identifier contract.
 
@@ -144,9 +144,10 @@ class LensConnector:
     
     @retry(
         wait=wait_fixed(15),
+        stop=stop_after_attempt(5),
         retry=retry_if_exception_type(RateLimitError),
     )
-    async def search_patents(self, query_payload: Dict) -> Dict:
+    async def search_patents(self, query_payload: dict) -> dict:
         """
         Execute a patent search with exponential backoff for rate limits.
         
@@ -208,15 +209,15 @@ class LensConnector:
     
     def build_keyword_search_query(
         self,
-        jurisdictions: Optional[List[str]],
-        start_date: Optional[str],
-        end_date: Optional[str] = None,
-        positive_keywords: Optional[List[List[str]]] = None,
-        negative_keywords: Optional[List[str]] = None,
-        patent_status_filter: Optional[List[str]] = None,
+        jurisdictions: list[str] | None,
+        start_date: str | None,
+        end_date: str | None = None,
+        positive_keywords: list[list[str]] | None = None,
+        negative_keywords: list[str] | None = None,
+        patent_status_filter: list[str] | None = None,
         language: str = "EN",
-        limit: Optional[int] = 100,
-    ) -> Dict:
+        limit: int | None = 100,
+    ) -> dict:
         """
         Construct a flexible keyword-based patent search query.
         
@@ -359,16 +360,16 @@ class LensConnector:
     
     async def search_by_jurisdiction(
         self,
-        jurisdiction: Optional[str],
-        start_date: Optional[str],
-        end_date: Optional[str] = None,
-        positive_keywords: Optional[List[List[str]]] = None,
-        negative_keywords: Optional[List[str]] = None,
-        patent_status_filter: Optional[List[str]] = None,
+        jurisdiction: str | None,
+        start_date: str | None,
+        end_date: str | None = None,
+        positive_keywords: list[list[str]] | None = None,
+        negative_keywords: list[str] | None = None,
+        patent_status_filter: list[str] | None = None,
         language: str = "EN",
-        limit: Optional[int] = 100,
-        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-    ) -> Dict:
+        limit: int | None = 100,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict:
         """
         Convenience method to search with specified language and no jurisdiction filter.
         
@@ -452,7 +453,12 @@ class LensConnector:
 
             # Report progress
             if progress_callback:
-                expected_total = min(target_limit, total_from_api) if total_from_api else target_limit
+                if total_from_api:
+                    expected_total = int(min(target_limit, total_from_api))
+                elif target_limit != float('inf'):
+                    expected_total = int(target_limit)
+                else:
+                    expected_total = len(all_raw_results)
                 progress_callback({
                     "message": f"found {len(all_raw_results)} patents...",
                     "completed": len(all_raw_results),
@@ -544,34 +550,44 @@ class LensConnector:
         
         return final_result
     
-    async def get_patent_by_lens_id(self, lens_id: str) -> Optional[Dict]:
+    async def get_patent_by_lens_id(
+        self,
+        lens_id: str,
+        *,
+        include_full_text: bool = False,
+    ) -> dict | None:
         """
         Retrieve a specific patent by its Lens ID.
         
         Args:
             lens_id: Lens unique identifier
+            include_full_text: If True, also request full `description` text.
             
         Returns:
             Patent data or None if not found
         """
+        include_fields = [
+            "lens_id",
+            "jurisdiction",
+            "doc_number",
+            "biblio.invention_title",
+            "abstract",
+            "claims",
+            "legal_status",
+            "biblio.parties.applicants",
+            "biblio.parties.inventors",
+            "date_published",
+            "biblio.classifications_ipcr",
+            "biblio.classifications_cpc",
+            "biblio",
+        ]
+        if include_full_text:
+            include_fields.append("description")
+
         query = {
             "query": {"term": {"lens_id": lens_id}},
             "size": 1,
-            "include": [
-                "lens_id",
-                "jurisdiction",
-                "doc_number",
-                "biblio.invention_title",
-                "abstract",
-                "claims",
-                "legal_status",
-                "biblio.parties.applicants",
-                "biblio.parties.inventors",
-                "date_published",
-                "biblio.classifications_ipcr",
-                "biblio.classifications_cpc",
-                "biblio",
-            ],
+            "include": include_fields,
         }
         
         try:
@@ -584,7 +600,7 @@ class LensConnector:
             logger.error(f"Failed to retrieve patent {lens_id}: {e}")
             return None
 
-    async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_by_identifier(self, identifier: str) -> dict[str, Any] | None:
         """
         Provider-neutral identifier lookup helper.
 
@@ -596,7 +612,7 @@ class LensConnector:
         """
         return await self.get_patent_by_lens_id(identifier)
 
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform a lightweight Lens provider health check.
 
@@ -631,12 +647,12 @@ class LensConnector:
 
 # Convenience function for simple usage
 async def search_patents_by_keywords(
-    jurisdictions: List[str],
-    positive_keywords: List[str],
-    negative_keywords: Optional[List[str]] = None,
+    jurisdictions: list[str],
+    positive_keywords: list[str],
+    negative_keywords: list[str] | None = None,
     days_back: int = 7,
-    patent_status_filter: Optional[List[str]] = None,
-) -> Dict:
+    patent_status_filter: list[str] | None = None,
+) -> dict:
     """
     Quick search function for the last N days using keyword filtering.
     

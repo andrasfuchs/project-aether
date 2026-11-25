@@ -3,9 +3,8 @@ Configuration management for Project Aether.
 Loads environment variables and provides centralized access to application settings.
 """
 
-import os
 from pathlib import Path
-from typing import List
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -25,7 +24,7 @@ class AetherConfig(BaseSettings):
     serpapi_key: str = Field(default="", alias="SERPAPI_KEY")
 
     # === Patent Provider Configuration ===
-    patent_provider: str = Field(default="epo", alias="PATENT_PROVIDER")
+    patent_provider: str = Field(default="lens", alias="PATENT_PROVIDER")
     epo_ops_base_url: str = Field(
         default="https://ops.epo.org/3.2/rest-services",
         alias="EPO_OPS_BASE_URL",
@@ -38,6 +37,18 @@ class AetherConfig(BaseSettings):
         default=30.0,
         alias="EPO_REQUEST_TIMEOUT_SECONDS",
     )
+
+    # === LLM Task Defaults ===
+    llm_scoring_model: str = Field(default="gemini-4-hydrogen", alias="LLM_SCORING_MODEL")
+    llm_scoring_thinking_level: str = Field(default="low", alias="LLM_SCORING_THINKING_LEVEL")
+    llm_translation_model: str = Field(default="gemini-4-hydrogen", alias="LLM_TRANSLATION_MODEL")
+    llm_translation_thinking_level: str = Field(default="low", alias="LLM_TRANSLATION_THINKING_LEVEL")
+    llm_keyword_model: str = Field(default="gemini-4-hydrogen", alias="LLM_KEYWORD_MODEL")
+    llm_keyword_thinking_level: str = Field(default="medium", alias="LLM_KEYWORD_THINKING_LEVEL")
+    llm_brief_model: str = Field(default="gemini-4-hydrogen", alias="LLM_BRIEF_MODEL")
+    llm_brief_thinking_level: str = Field(default="high", alias="LLM_BRIEF_THINKING_LEVEL")
+    llm_advisor_model: str = Field(default="gemini-4-hydrogen", alias="LLM_ADVISOR_MODEL")
+    llm_advisor_thinking_level: str = Field(default="medium", alias="LLM_ADVISOR_THINKING_LEVEL")
     
     # === Application Configuration ===
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
@@ -68,7 +79,7 @@ class AetherConfig(BaseSettings):
     )
     
     @property
-    def jurisdictions_list(self) -> List[str]:
+    def jurisdictions_list(self) -> list[str]:
         """Parse jurisdictions from comma-separated string."""
         return [j.strip().upper() for j in self.default_jurisdictions.split(",")]
     

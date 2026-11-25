@@ -205,3 +205,15 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Project Aether local runtime data & large caches
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.jsonl
+data/search_cache/
+data/search_cache.json
+data/scoring_cache.json
+data/translation_cache.json
+data/patent_pdfs/
+data/vectors/

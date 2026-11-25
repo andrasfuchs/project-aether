@@ -1,20 +1,18 @@
-from datetime import datetime
-import asyncio
+from datetime import datetime, timedelta
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from project_aether.core.config import get_config
 from project_aether.core.keyword_helpers import get_active_english_keywords
 from project_aether.core.keyword_translation import (
-    load_keyword_cache,
-    save_keyword_cache,
-    ensure_keyword_set,
-    get_history_entries,
     delete_keyword_set,
+    ensure_keyword_set,
+    get_cached_translation,
+    get_history_entries,
+    keyword_set_id,
+    save_keyword_cache,
+    set_cached_translation,
 )
-from project_aether.tools.epo_api import EPOConnector
-from project_aether.tools.lens_api import LensConnector
 
 
 def load_keyword_set_callback(entry):
@@ -22,11 +20,8 @@ def load_keyword_set_callback(entry):
     if "keyword_config" in st.session_state:
         st.session_state["keyword_config"].setdefault("English", {})["positive"] = entry.get("include", [])
         st.session_state["keyword_config"].setdefault("English", {})["negative"] = entry.get("exclude", [])
-    
-    # Load the keyword set name
-    st.session_state["keyword_set_name"] = entry.get("label", "")
 
-    # Increment widget version to force recreation
+    st.session_state["keyword_set_name"] = entry.get("label", "")
     st.session_state["keyword_widget_version"] = st.session_state.get("keyword_widget_version", 0) + 1
 
 
@@ -34,38 +29,24 @@ def on_keyword_name_change():
     """Callback when the keyword set name textbox changes."""
     name = st.session_state.get("sidebar_set_label", "").strip()
     cache = st.session_state.get("keyword_cache", {})
-    
-    # Check if a keyword set with this name exists in the cache
     keyword_sets = cache.get("keyword_sets", {})
-    name_exists = any(
-        entry.get("label") == name 
-        for entry in keyword_sets.values()
-    )
-    
-    # Store mode and the associated set_id if updating
-    if name and name_exists:
-        # Find the set_id for this named entry
-        for set_id, entry in keyword_sets.items():
-            if entry.get("label") == name:
-                st.session_state["keyword_set_mode"] = "UPDATE"
-                st.session_state["keyword_set_update_id"] = set_id
-                st.session_state["keyword_set_original_include"] = entry.get("include", [])
-                st.session_state["keyword_set_original_exclude"] = entry.get("exclude", [])
-                break
-    else:
-        st.session_state["keyword_set_mode"] = "SAVE"
-        st.session_state["keyword_set_update_id"] = None
+
+    for set_id, entry in keyword_sets.items():
+        if name and entry.get("label") == name:
+            st.session_state["keyword_set_mode"] = "UPDATE"
+            st.session_state["keyword_set_update_id"] = set_id
+            st.session_state["keyword_set_original_include"] = entry.get("include", [])
+            st.session_state["keyword_set_original_exclude"] = entry.get("exclude", [])
+            return
+
+    st.session_state["keyword_set_mode"] = "SAVE"
+    st.session_state["keyword_set_update_id"] = None
 
 
-def render_sidebar(language_map):
+def render_sidebar(language_map, jurisdiction_map=None):
     with st.sidebar:
         config = get_config()
 
-        # Use infinite date window (no date filtering)
-        end_date = datetime.now()
-        start_date = None
-
-        # Initialize language selection in session state
         if "selected_languages" not in st.session_state:
             st.session_state.selected_languages = ["English"]
 
@@ -74,21 +55,17 @@ def render_sidebar(language_map):
             "Languages",
             options=language_options,
             default=st.session_state.selected_languages,
-            help="Select one or more languages for the search query. Searches will be performed sequentially and results accumulated.",
+            help="Select one or more languages for the search query. Searches run sequentially and results are deduplicated.",
         )
 
-        # Store selected languages
         if selected_language_names:
             st.session_state.selected_languages = selected_language_names
         else:
             st.warning("Please select at least one language.")
             selected_language_names = ["English"]
             st.session_state.selected_languages = selected_language_names
-        
-        selected_language_codes = [language_map[lang] for lang in selected_language_names]
 
-        # Jurisdiction is set to ALL by default (no filter)
-        selected_jurisdictions = None
+        selected_language_codes = [language_map[lang] for lang in selected_language_names]
 
         keyword_config = st.session_state.get(
             "keyword_config",
@@ -99,46 +76,58 @@ def render_sidebar(language_map):
         widget_version = st.session_state.get("keyword_widget_version", 0)
 
         with st.expander("Keyword set", expanded=True):
-            set_label = st.text_input("Name (optional)", key="sidebar_set_label", value=st.session_state.get("keyword_set_name", ""), placeholder="e.g. My Custom Keywords", on_change=on_keyword_name_change)
+            set_label = st.text_input(
+                "Name (optional)",
+                key="sidebar_set_label",
+                value=st.session_state.get("keyword_set_name", ""),
+                placeholder="e.g. My Custom Keywords",
+                on_change=on_keyword_name_change,
+            )
 
+            include_value = (
+                "\n".join(", ".join(group) for group in include_terms)
+                if include_terms and isinstance(include_terms[0], list)
+                else "\n".join(str(term) for term in include_terms)
+            )
             include_text = st.text_area(
                 "Include terms (comma-separated synonyms per line)",
-                value="\n".join(", ".join(group) for group in include_terms) if include_terms and isinstance(include_terms[0], list) else "\n".join(", ".join([term]) for term in include_terms),
+                value=include_value,
                 height=120,
                 key=f"sidebar_include_terms_{widget_version}",
             )
             exclude_text = st.text_area(
                 "Exclude terms",
                 value=", ".join(exclude_terms),
-                height=120,
+                height=110,
                 key=f"sidebar_exclude_terms_{widget_version}",
             )
 
-            updated_include = [[t.strip() for t in line.split(",") if t.strip()] for line in include_text.split("\n") if line.strip()]
+            updated_include = [
+                [t.strip() for t in line.split(",") if t.strip()]
+                for line in include_text.split("\n")
+                if line.strip()
+            ]
             updated_exclude = [term.strip() for term in exclude_text.split(",") if term.strip()]
             keyword_config.setdefault("English", {})["positive"] = updated_include
             keyword_config.setdefault("English", {})["negative"] = updated_exclude
             st.session_state["keyword_config"] = keyword_config
 
-            st.caption(f"Include: {sum(len(g) for g in updated_include)} terms in {len(updated_include)} groups | Exclude: {len(updated_exclude)} terms")
+            st.caption(
+                f"Include: {sum(len(g) for g in updated_include)} terms in {len(updated_include)} groups | "
+                f"Exclude: {len(updated_exclude)} terms"
+            )
 
-            # Determine button mode (SAVE vs UPDATE)
             mode = st.session_state.get("keyword_set_mode", "SAVE")
             button_label = "💾 Update" if mode == "UPDATE" else "💾 Save"
 
-            if st.button(button_label, use_container_width=True):
+            if st.button(button_label, width="stretch"):
                 if mode == "UPDATE":
-                    # In UPDATE mode, check if terms have changed
                     original_include = st.session_state.get("keyword_set_original_include", [])
                     original_exclude = st.session_state.get("keyword_set_original_exclude", [])
-                    
                     if updated_include != original_include or updated_exclude != original_exclude:
-                        # Terms changed - delete old entry and its translations
                         update_id = st.session_state.get("keyword_set_update_id")
                         if update_id:
                             delete_keyword_set(cache, update_id)
-                        
-                        # Save as new keyword set with the same label
                         ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
                         save_keyword_cache(cache)
                         st.session_state["keyword_cache"] = cache
@@ -146,11 +135,55 @@ def render_sidebar(language_map):
                     else:
                         st.info("No changes to save")
                 else:
-                    # In SAVE mode, just save as new
                     ensure_keyword_set(cache, updated_include, updated_exclude, label=set_label)
                     save_keyword_cache(cache)
                     st.session_state["keyword_cache"] = cache
                     st.success("Keyword set saved")
+
+            # Allow inspecting & manually editing cached translations for selected non-English languages
+            non_en_langs = [lang for lang in selected_language_names if lang != "English"]
+            if non_en_langs and updated_include:
+                active_set_id = keyword_set_id(updated_include, updated_exclude)
+                edit_lang = st.selectbox(
+                    "Edit cached translation",
+                    options=non_en_langs,
+                    key="sidebar_edit_trans_lang",
+                )
+                cached_trans = get_cached_translation(cache, active_set_id, edit_lang)
+                if cached_trans:
+                    t_inc = "\n".join(", ".join(g) for g in cached_trans.get("include", []))
+                    t_exc = ", ".join(cached_trans.get("exclude", []))
+                    new_t_inc = st.text_area(
+                        f"{edit_lang} include",
+                        value=t_inc,
+                        height=75,
+                        key=f"trans_inc_{active_set_id}_{edit_lang}",
+                    )
+                    new_t_exc = st.text_input(
+                        f"{edit_lang} exclude",
+                        value=t_exc,
+                        key=f"trans_exc_{active_set_id}_{edit_lang}",
+                    )
+                    if st.button("Save Translation Edit", key=f"save_trans_{active_set_id}_{edit_lang}", width="stretch"):
+                        parsed_inc = [
+                            [t.strip() for t in ln.split(",") if t.strip()]
+                            for ln in new_t_inc.split("\n")
+                            if ln.strip()
+                        ]
+                        parsed_exc = [t.strip() for t in new_t_exc.split(",") if t.strip()]
+                        set_cached_translation(
+                            cache,
+                            set_id=active_set_id,
+                            language=edit_lang,
+                            include_terms=parsed_inc,
+                            exclude_terms=parsed_exc,
+                            source="manual",
+                        )
+                        save_keyword_cache(cache)
+                        st.session_state["keyword_cache"] = cache
+                        st.success(f"Saved {edit_lang} translation.")
+                else:
+                    st.caption(f"No cached {edit_lang} translation yet (will auto-translate on search).")
 
         with st.expander("Previous keyword sets"):
             history_entries = get_history_entries(cache)
@@ -165,79 +198,103 @@ def render_sidebar(language_map):
                 )
                 col_load, col_delete = st.columns(2)
                 with col_load:
-                    if st.button("📂", use_container_width=True, on_click=load_keyword_set_callback, args=(selected_entry,)):
+                    if st.button("📂", width="stretch", on_click=load_keyword_set_callback, args=(selected_entry,)):
                         st.success("Keyword set loaded")
                         st.rerun()
                 with col_delete:
-                    if st.button("🗑️", use_container_width=True):
+                    if st.button("🗑️", width="stretch"):
                         delete_keyword_set(cache, selected_entry["id"])
                         save_keyword_cache(cache)
                         st.session_state["keyword_cache"] = cache
                         st.success("Keyword set deleted")
                         st.rerun()
 
+        # --- OPTIONAL SEARCH FILTERS ---
+        selected_jurisdiction: str | None = None
+        selected_statuses: list[str] | None = None
+        start_date: datetime | None = None
+        end_date: datetime = datetime.now()
+        force_refresh = False
+
+        with st.expander("Search Filters (Optional)", expanded=False):
+            if jurisdiction_map:
+                jur_names = list(jurisdiction_map.keys())
+                chosen_jur = st.selectbox("Jurisdiction", jur_names, index=0, key="sidebar_jurisdiction")
+                code = jurisdiction_map[chosen_jur]
+                selected_jurisdiction = None if code == "ALL" else code
+
+            status_opts = ["REJECTED", "DISCONTINUED", "WITHDRAWN", "ACTIVE", "PENDING", "EXPIRED"]
+            chosen_statuses = st.multiselect(
+                "Legal Status (Lens)",
+                options=status_opts,
+                default=[],
+                placeholder="All statuses",
+                key="sidebar_statuses",
+            )
+            selected_statuses = chosen_statuses or None
+
+            window_opt = st.selectbox(
+                "Publication Window",
+                ["All time", "Last 7 days", "Last 30 days", "Last 90 days", "Last 365 days"],
+                index=0,
+                key="sidebar_date_window",
+            )
+            days_map = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "Last 365 days": 365}
+            if window_opt in days_map:
+                start_date = end_date - timedelta(days=days_map[window_opt])
+
+            force_refresh = st.checkbox(
+                "Force refresh (bypass search cache)",
+                value=False,
+                key="sidebar_force_refresh",
+            )
+
+        st.markdown("---")
+        run_mission = st.button("🔍 Search", type="primary", width="stretch")
         st.markdown("---")
 
-        col_btn, _ = st.columns([1, 0.1])
-        with col_btn:
-            run_mission = st.button("🔍 Search", type="primary", use_container_width=True)
-
-        st.markdown("---")
-
-        # System Status in Sidebar
+        # --- CONNECTIVITY ---
         st.write("#### Connectivity")
-
         primary_provider = config.normalized_patent_provider
         secondary_provider = "lens" if primary_provider == "epo" else "epo"
 
-        provider_labels = {
-            "epo": "EPO OPS",
-            "lens": "LENS.org",
-        }
-        provider_available = {
-            "epo": config.is_epo_configured,
-            "lens": config.is_lens_configured,
-        }
+        provider_labels = {"epo": "EPO OPS", "lens": "LENS.org"}
+        provider_available = {"epo": config.is_epo_configured, "lens": config.is_lens_configured}
 
         primary_label = provider_labels[primary_provider]
         primary_available = provider_available[primary_provider]
         primary_status_class = "status-ok" if primary_available else "status-err"
         primary_status_text = "available" if primary_available else "unavailable"
         st.markdown(
-            f'<div class="status-badge {primary_status_class}">Primary Provider: {primary_label} ({primary_status_text})</div>',
+            f'<div class="status-badge {primary_status_class}">Primary: {primary_label} ({primary_status_text})</div>',
             unsafe_allow_html=True,
         )
-        if not primary_available:
-            if primary_provider == "epo":
-                st.caption("Missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
-            else:
-                st.caption("Missing `LENS_ORG_API_TOKEN`")
 
         secondary_label = provider_labels[secondary_provider]
         secondary_available = provider_available[secondary_provider]
         secondary_status_class = "status-ok" if secondary_available else "status-warn"
         secondary_status_text = "available" if secondary_available else "unavailable"
         st.markdown(
-            f'<div class="status-badge {secondary_status_class}">Secondary Provider (Fallback): {secondary_label} ({secondary_status_text})</div>',
+            f'<div class="status-badge {secondary_status_class}">Fallback: {secondary_label} ({secondary_status_text})</div>',
             unsafe_allow_html=True,
         )
-        if not secondary_available:
-            if secondary_provider == "epo":
-                st.caption("Fallback unavailable: missing `EPO_CONSUMER_KEY` and/or `EPO_CONSUMER_SECRET`")
-            else:
-                st.caption("Fallback unavailable: missing `LENS_ORG_API_TOKEN`")
-
-        st.write("")  # Spacer
 
         if config.is_llm_configured:
             st.markdown('<div class="status-badge status-ok">LLM service connected</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
 
-
         st.markdown("---")
+        st.caption("Data sources: [Lens.org](https://www.lens.org/) · [EPO OPS](https://developers.epo.org/)")
 
-        components.iframe("https://lens.org/lens/embed/attribution", height=30, scrolling=False)
-
-
-    return config, selected_language_codes, selected_language_names, start_date, end_date, run_mission
+    return (
+        config,
+        selected_language_codes,
+        selected_language_names,
+        start_date,
+        end_date,
+        selected_jurisdiction,
+        selected_statuses,
+        force_refresh,
+        run_mission,
+    )

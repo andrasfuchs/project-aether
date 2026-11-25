@@ -6,14 +6,14 @@ Based on implementation plan Section 4.3.
 
 import json
 import logging
-from typing import Dict, List, Any, Optional
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from typing import Any
 
 logger = logging.getLogger("Artifacts")
 
 
-def _safe_get_nested(data: Dict, path: str, default: Any = None) -> Any:
+def _safe_get_nested(data: dict, path: str, default: Any = None) -> Any:
     """
     Safely extract nested field from dictionary using dot notation.
     
@@ -55,13 +55,13 @@ class DashboardArtifact:
     low_priority_count: int
     
     # Jurisdictions
-    jurisdictions_searched: List[str]
+    jurisdictions_searched: list[str]
     
     # Top findings
-    top_jurisdiction: Optional[str] = None
+    top_jurisdiction: str | None = None
     anomalous_count: int = 0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
@@ -76,12 +76,12 @@ class ReviewArtifact:
     Detailed patent review list artifact.
     Rendered as an interactive data grid in Streamlit.
     """
-    patents: List[Dict[str, Any]]
+    patents: list[dict[str, Any]]
     total_count: int
-    filter_applied: Optional[str] = None
+    filter_applied: str | None = None
     sort_by: str = "intelligence_value"
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "patents": self.patents,
@@ -102,10 +102,10 @@ class AnalysisArtifact:
     Rendered as a markdown report with diagrams.
     """
     record_id: str
-    lens_id: Optional[str]
-    epo_id: Optional[str]
+    lens_id: str | None
+    epo_id: str | None
     provider_name: str
-    provider_record_url: Optional[str]
+    provider_record_url: str | None
     patent_number: str
     jurisdiction: str
     title: str
@@ -114,26 +114,26 @@ class AnalysisArtifact:
     status_summary: str
     relevance_score: float
     intelligence_value: str
-    classification_tags: List[str]
+    classification_tags: list[str]
     
     # Full text
     abstract: str
     rejection_reason: str
     
     # Metadata
-    applicants: List[str]
-    inventors: List[str]
-    date_published: Optional[str] = None
-    date_discontinued: Optional[str] = None
+    applicants: list[str]
+    inventors: list[str]
+    date_published: str | None = None
+    date_discontinued: str | None = None
     
     # Relations
-    related_patents: List[Dict[str, str]] = None
+    related_patents: list[dict[str, str]] = None
     
     def __post_init__(self):
         if self.related_patents is None:
             self.related_patents = []
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
     
@@ -230,7 +230,7 @@ class ArtifactGenerator:
     Utility class for generating artifacts from raw data.
     """
     
-    def __init__(self, mission_id: Optional[str] = None):
+    def __init__(self, mission_id: str | None = None):
         """
         Initialize the artifact generator.
         
@@ -247,8 +247,8 @@ class ArtifactGenerator:
     
     def create_dashboard_artifact(
         self,
-        assessments: List[Dict[str, Any]],
-        jurisdictions: List[str],
+        assessments: list[dict[str, Any]],
+        jurisdictions: list[str],
     ) -> DashboardArtifact:
         """
         Create a dashboard artifact from patent assessments.
@@ -321,8 +321,8 @@ class ArtifactGenerator:
     
     def create_review_artifact(
         self,
-        assessments: List[Dict[str, Any]],
-        filter_level: Optional[str] = None,
+        assessments: list[dict[str, Any]],
+        filter_level: str | None = None,
     ) -> ReviewArtifact:
         """
         Create a review artifact from patent assessments.
@@ -368,8 +368,8 @@ class ArtifactGenerator:
     
     def create_deep_dive_artifact(
         self,
-        assessment: Dict[str, Any],
-        patent_data: Dict[str, Any],
+        assessment: dict[str, Any],
+        patent_data: dict[str, Any],
     ) -> AnalysisArtifact:
         """
         Create a deep dive artifact for a single patent.
@@ -457,9 +457,9 @@ class ArtifactGenerator:
 # Convenience functions
 
 def generate_dashboard(
-    assessments: List[Dict[str, Any]],
-    jurisdictions: List[str],
-    mission_id: Optional[str] = None,
+    assessments: list[dict[str, Any]],
+    jurisdictions: list[str],
+    mission_id: str | None = None,
 ) -> DashboardArtifact:
     """
     Quick function to generate a dashboard artifact.
@@ -477,8 +477,8 @@ def generate_dashboard(
 
 
 def generate_review(
-    assessments: List[Dict[str, Any]],
-    filter_level: Optional[str] = None,
+    assessments: list[dict[str, Any]],
+    filter_level: str | None = None,
 ) -> ReviewArtifact:
     """
     Quick function to generate a review artifact.
