@@ -30,7 +30,7 @@ def render_reviews_tab() -> None:
     st.markdown("### George's Reviewed Patents")
     st.caption(
         "All saved 0–100 grades and notes persist in `data/aether.db` across sessions "
-        "and calibrate future Gemini scoring."
+        "and calibrate future relevance scoring."
     )
 
     all_reviews = list_reviews()
@@ -71,7 +71,7 @@ def render_reviews_tab() -> None:
                 "Patent #": f"{r['jurisdiction']} {r['doc_number']}".strip(),
                 "Title": r["title_en"] or r["title"] or "Untitled",
                 "George Score": round(float(r["user_score"]), 1),
-                "LLM Score": round(float(r["llm_score"]), 1) if r.get("llm_score") is not None else None,
+                "Relevance Score": round(float(r["llm_score"]), 1) if r.get("llm_score") is not None else None,
                 "Calibrate": bool(r.get("use_for_calibration", 1)),
                 "Notes": r.get("notes") or "",
                 "Updated": (r.get("updated_at") or "")[:19].replace("T", " "),
@@ -89,8 +89,8 @@ def render_reviews_tab() -> None:
                 "George Score": st.column_config.ProgressColumn(
                     "George Score", min_value=0, max_value=100, format="%.0f"
                 ),
-                "LLM Score": st.column_config.NumberColumn(
-                    "LLM Score", min_value=0, max_value=100, format="%.1f"
+                "Relevance Score": st.column_config.NumberColumn(
+                    "Relevance Score", min_value=0, max_value=100, format="%.1f"
                 ),
             },
             height=340,
@@ -123,7 +123,7 @@ def render_reviews_tab() -> None:
                 key=f"rev_edit_notes_{target['record_id']}",
             )
             new_cal = st.checkbox(
-                "Use as calibration example for LLM scoring",
+                "Use to calibrate relevance scoring",
                 value=bool(target.get("use_for_calibration", 1)),
                 key=f"rev_edit_cal_{target['record_id']}",
             )

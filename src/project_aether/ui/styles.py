@@ -14,7 +14,7 @@ def inject_global_styles() -> None:
     /* Full-width responsive main container */
     .stMainBlockContainer, .block-container {
         max-width: 1440px !important;
-        padding-top: 1.5rem !important;
+        padding-top: 3.75rem !important;
         padding-left: 2rem !important;
         padding-right: 2rem !important;
         padding-bottom: 2.5rem !important;
@@ -182,9 +182,10 @@ def inject_global_styles() -> None:
         margin-bottom: 1rem;
     }
 
-    .stTabs [data-baseweb="tab"] {
-        height: 2.6rem;
-        padding: 0 1rem;
+    .stTabs button[data-baseweb="tab"],
+    .stTabs button[role="tab"] {
+        height: auto !important;
+        padding: 0.55rem 1.25rem !important;
         border-radius: 8px 8px 0 0;
         background-color: transparent;
         color: #94A3B8 !important;
@@ -192,8 +193,15 @@ def inject_global_styles() -> None:
         font-weight: 500;
     }
 
-    .stTabs [data-baseweb="tab"] p {
-        margin: 0;
+    .stTabs button[data-baseweb="tab"] > div,
+    .stTabs button[role="tab"] > div {
+        padding: 0 0.25rem !important;
+    }
+
+    .stTabs button[data-baseweb="tab"] p,
+    .stTabs button[role="tab"] p {
+        margin: 0 !important;
+        padding: 0 0.2rem !important;
         font-size: 0.92rem;
     }
 
@@ -214,6 +222,18 @@ def inject_global_styles() -> None:
     section[data-testid="stSidebar"] {
         background-color: #020617;
         border-right: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* Hide the underlying file uploader widget triggered by Upload/Replace PDF button */
+    .st-key-aether_hidden_pdf_uploader_wrap {
+        position: absolute !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     /* Inline code */

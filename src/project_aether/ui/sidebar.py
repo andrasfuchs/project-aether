@@ -280,9 +280,9 @@ def render_sidebar(language_map, jurisdiction_map=None):
         )
 
         if config.is_llm_configured:
-            st.markdown('<div class="status-badge status-ok">LLM service connected</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-ok">Gemini connected</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="status-badge status-warn">LLM service offline</div>', unsafe_allow_html=True)
+            st.markdown('<div class="status-badge status-warn">Gemini offline</div>', unsafe_allow_html=True)
 
         st.markdown("---")
         st.caption("Data sources: [Lens.org](https://www.lens.org/) · [EPO OPS](https://developers.epo.org/)")

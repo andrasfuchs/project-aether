@@ -44,7 +44,7 @@ def render_results_tab(assessments, jurisdiction_map):
         [1.1, 1.3, 1.1, 1.6, 1.2], vertical_alignment="bottom"
     )
     with fcol1:
-        min_score = st.slider("Min LLM Score", 0, 100, 0, key="results_min_score")
+        min_score = st.slider("Min Relevance", 0, 100, 0, key="results_min_score")
     with fcol2:
         priority_filter = st.multiselect(
             "Priority",
@@ -113,7 +113,7 @@ def render_results_tab(assessments, jurisdiction_map):
                 "Patent #": f"{a.jurisdiction} {a.doc_number}".strip(),
                 "Title": display_title,
                 "Priority": a.intelligence_value,
-                "LLM Score": round(float(a.relevance_score), 1),
+                "Relevance Score": round(float(a.relevance_score), 1),
                 "My Score": round(my_score, 1) if my_score is not None else None,
                 "Status": status_disp,
                 "Category": a.domain_category or "—",
@@ -137,8 +137,8 @@ def render_results_tab(assessments, jurisdiction_map):
         on_select="rerun",
         selection_mode="single-row",
         column_config={
-            "LLM Score": st.column_config.ProgressColumn(
-                "LLM Score",
+            "Relevance Score": st.column_config.ProgressColumn(
+                "Relevance Score",
                 min_value=0,
                 max_value=100,
                 format="%.1f",
@@ -180,7 +180,7 @@ def render_results_tab(assessments, jurisdiction_map):
         for r in rows:
             my_s = f"{r['My Score']:.0f}/100" if r["My Score"] is not None else "Unreviewed"
             md_lines.append(
-                f"- **[{r['Patent #']}] {r['Title']}** | LLM: {r['LLM Score']:.1f} | "
+                f"- **[{r['Patent #']}] {r['Title']}** | Relevance: {r['Relevance Score']:.1f} | "
                 f"George: {my_s} | Status: {r['Status']} | {r['Link']}"
             )
         st.download_button(
