@@ -1,7 +1,7 @@
 """
 Detailed Analysis tab: inspect patent metadata, auto-triggered Hungarian/English
-translation (disk-cached), 3-button PDF Deep Technical Brief, George's 0-100
-review form, and keyboard shortcuts.
+translation (disk-cached), 3-button PDF Deep Technical Brief, 0-100 review form,
+and keyboard shortcuts.
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ def _inject_keyboard_shortcuts() -> None:
       return;
     }
 
-    // Numeric keys 0-9 -> set George's score (0->0, 1->10, ..., 9->90) and focus Review Notes
+    // Numeric keys 0-9 -> set score (0->0, 1->10, ..., 9->90) and focus Review Notes
     if (!e.ctrlKey && !e.metaKey && !e.altKey && /^[0-9]$/.test(e.key)) {
       e.preventDefault();
       const score = parseInt(e.key, 10) * 10;
@@ -177,15 +177,15 @@ def _inject_keyboard_shortcuts() -> None:
 
 
 def render_deep_dive(assessment) -> None:
-    """Render a detailed view of a patent assessment."""
+    """Render a detailed architectural dossier of a patent assessment."""
     config = get_config()
     api_key = config.google_api_key or os.getenv("GEMINI_API_KEY", "")
 
-    color = "#94A3B8"
+    accent_color = "#64748B"
     if assessment.intelligence_value == "HIGH":
-        color = "#EF4444"
+        accent_color = "#DC2626"
     elif assessment.intelligence_value == "MEDIUM":
-        color = "#F59E0B"
+        accent_color = "#D97706"
 
     patent_data: dict[str, Any] = next(
         (
@@ -203,53 +203,57 @@ def render_deep_dive(assessment) -> None:
     english_title = getattr(assessment, "title_en", None) or patent_data.get("title_en")
 
     safe_title = html.escape(assessment.title or "Untitled")
-    title_html = f'<h2 style="margin: 0 0 0.4rem 0;">{safe_title}</h2>'
+    subtitle_html = ""
     if english_title and english_title.strip().lower() != (assessment.title or "").strip().lower():
-        title_html += (
-            f'<p style="font-size: 0.98rem; color: #94A3B8; margin: 0 0 0.5rem 0;">'
-            f"({html.escape(english_title)})</p>"
-        )
+        subtitle_html = f'<p class="aether-dossier-subtitle">{html.escape(english_title)}</p>'
 
     inventors_str = ", ".join(assessment.inventors) if assessment.inventors else "Unknown"
     applicants = getattr(assessment, "applicants", None) or []
-    applicants_str = ", ".join(applicants) if applicants else "—"
+    applicants_str = ", ".join(applicants) if applicants else "Not listed"
     pub_date = getattr(assessment, "date_published", None) or patent_data.get("date_published") or "Unknown"
+    domain_cat = getattr(assessment, "domain_category", "") or ""
+    doc_ref = f"{assessment.jurisdiction} {assessment.doc_number}".strip()
 
-    provider_link_html = (
-        f'<a href="{html.escape(provider_url)}" target="_blank" style="color: #38BDF8; text-decoration: none;">View on Provider ↗</a>'
-        if provider_url
-        else '<span style="color: #64748B;">No external patent link available.</span>'
-    )
-    legal_link_html = (
-        f'<a href="{html.escape(legal_history_url)}" target="_blank" style="color: #34D399; text-decoration: none;">Legal History ↗</a>'
-        if legal_history_url
-        else ""
-    )
-    domain_cat = getattr(assessment, "domain_category", "")
-    domain_html = (
-        f' &nbsp;·&nbsp; <span style="color: #7DD3FC;">{html.escape(domain_cat)}</span>'
+    domain_meta = (
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Domain</span>'
+        f'<span class="aether-meta-val">{html.escape(domain_cat)}</span></span>'
         if domain_cat
         else ""
     )
 
+    links_parts = []
+    if provider_url:
+        links_parts.append(
+            f'<a href="{html.escape(provider_url)}" target="_blank" class="aether-link">Open provider record ↗</a>'
+        )
+    if legal_history_url:
+        links_parts.append(
+            f'<a href="{html.escape(legal_history_url)}" target="_blank" class="aether-link">Legal history ↗</a>'
+        )
+    links_html = (
+        f'<div class="aether-links-row">{"".join(links_parts)}</div>'
+        if links_parts
+        else ""
+    )
+
     header_html = (
-        f'<div class="glass-card" style="box-shadow: inset 0 3px 0 0 {color};">'
-        f"{title_html}"
-        f'<p style="color: #CBD5E1; font-size: 0.9rem; margin: 0.35rem 0;">'
-        f"<strong>Inventors:</strong> {html.escape(inventors_str)} &nbsp;|&nbsp; "
-        f"<strong>Applicants:</strong> {html.escape(applicants_str)} &nbsp;|&nbsp; "
-        f"<strong>Published:</strong> {html.escape(str(pub_date))}</p>"
-        f'<p style="font-family: monospace; color: #94A3B8; font-size: 0.9rem; margin: 0.35rem 0;">'
-        f"{html.escape(assessment.record_id)} &nbsp;·&nbsp; "
-        f"{html.escape(assessment.jurisdiction)} {html.escape(assessment.doc_number)}"
-        f"{domain_html}</p>"
-        f'<div style="margin-top: 0.5rem; display: flex; gap: 1rem; font-size: 0.88rem;">'
-        f"{provider_link_html}{legal_link_html}</div>"
+        f'<div class="aether-dossier-header" style="--card-accent: {accent_color};">'
+        f'<div class="aether-dossier-title">{safe_title}</div>'
+        f"{subtitle_html}"
+        f'<div class="aether-meta-grid">'
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Document</span><span class="aether-meta-val aether-mono">{html.escape(doc_ref)}</span></span>'
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Record ID</span><span class="aether-meta-val aether-mono">{html.escape(assessment.record_id)}</span></span>'
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Published</span><span class="aether-meta-val">{html.escape(str(pub_date))}</span></span>'
+        f"{domain_meta}"
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Inventors</span><span class="aether-meta-val">{html.escape(inventors_str)}</span></span>'
+        f'<span class="aether-meta-item"><span class="aether-meta-key">Applicants</span><span class="aether-meta-val">{html.escape(applicants_str)}</span></span>'
+        f"</div>"
+        f"{links_html}"
         f"</div>"
     )
     st.markdown(header_html, unsafe_allow_html=True)
 
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([2.1, 1], gap="large")
 
     with col1:
         st.markdown("#### Abstract")
@@ -335,11 +339,10 @@ def render_deep_dive(assessment) -> None:
 
                     if selected_abs_tab in available_abstracts:
                         st.markdown(
-                            f'<div class="abstract-box">{html.escape(available_abstracts[selected_abs_tab])}</div>',
+                            f'<div class="aether-abstract">{html.escape(available_abstracts[selected_abs_tab])}</div>',
                             unsafe_allow_html=True,
                         )
                     else:
-                        # Auto-trigger translation immediately when this tab is selected!
                         target_language = "English" if "English" in selected_abs_tab else "Hungarian"
                         prefer_order = [
                             "English",
@@ -376,7 +379,7 @@ def render_deep_dive(assessment) -> None:
                             )
                             if cached_text:
                                 st.markdown(
-                                    f'<div class="abstract-box">{html.escape(cached_text)}</div>',
+                                    f'<div class="aether-abstract">{html.escape(cached_text)}</div>',
                                     unsafe_allow_html=True,
                                 )
                             elif api_key:
@@ -402,7 +405,7 @@ def render_deep_dive(assessment) -> None:
                                         original_text=source_abstract,
                                     )
                                     st.markdown(
-                                        f'<div class="abstract-box">{html.escape(translated)}</div>',
+                                        f'<div class="aether-abstract">{html.escape(translated)}</div>',
                                         unsafe_allow_html=True,
                                     )
                                 except Exception as exc:
@@ -412,11 +415,11 @@ def render_deep_dive(assessment) -> None:
             else:
                 primary_abstract_text = str(abstract_data)
                 st.markdown(
-                    f'<div class="abstract-box">{html.escape(primary_abstract_text)}</div>',
+                    f'<div class="aether-abstract">{html.escape(primary_abstract_text)}</div>',
                     unsafe_allow_html=True,
                 )
         else:
-            st.info("No abstract available")
+            st.info("No abstract available for this patent.")
 
         # --- CLAIMS EXPANDER ---
         claims_text = _extract_claims_text(patent_data)
@@ -425,7 +428,7 @@ def render_deep_dive(assessment) -> None:
                 st.text(claims_text)
 
         # --- DEEP TECHNICAL BRIEF (3-BUTTON SINGLE-LINE LAYOUT, ENGLISH ONLY) ---
-        st.markdown("#### Deep Technical Brief")
+        st.markdown("#### Deep technical brief")
 
         gp_id = f"{assessment.jurisdiction}{assessment.doc_number}".replace(" ", "")
         google_patents_url = f"https://patents.google.com/patent/{gp_id}" if gp_id else None
@@ -530,17 +533,16 @@ def render_deep_dive(assessment) -> None:
             st.markdown(cached_brief)
         else:
             st.markdown(
-                '<div class="abstract-box" style="color: #94A3B8;">'
-                "A patent PDF is required first to generate a Deep Technical Brief. "
-                "Use <strong>Auto-fetch PDF</strong> or <strong>Upload PDF</strong> above."
+                '<div class="aether-abstract aether-abstract--muted">'
+                "Attach a patent PDF using <strong>Auto-fetch PDF</strong> or <strong>Upload PDF</strong> above to generate a deep technical brief."
                 "</div>",
                 unsafe_allow_html=True,
             )
 
     with col2:
-        # --- RELEVANCE ANALYSIS (SEPARATE FROM GEORGE'S REVIEW) ---
-        st.markdown("#### Relevance Analysis")
-        st.progress(assessment.relevance_score / 100, text=f"Relevance Score: {assessment.relevance_score:.1f}/100")
+        # --- RELEVANCE ANALYSIS ---
+        st.markdown("#### Relevance analysis")
+        st.progress(assessment.relevance_score / 100, text=f"Score: {assessment.relevance_score:.1f} / 100")
 
         if getattr(assessment, "rationale", ""):
             st.markdown(f"**Rationale:** {assessment.rationale}")
@@ -551,71 +553,74 @@ def render_deep_dive(assessment) -> None:
 
         st.markdown("**Tags**")
         if getattr(assessment, "llm_tags", None):
-            pills = "".join(
-                f'<span class="tag-pill">{html.escape(tag)}</span>'
-                for tag in assessment.llm_tags
+            tag_items = '<span class="aether-tag-sep">·</span>'.join(
+                html.escape(tag) for tag in assessment.llm_tags
             )
-            st.markdown(f'<div class="tag-container">{pills}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="aether-tag-list">{tag_items}</div>', unsafe_allow_html=True)
         else:
-            st.caption("No tags")
+            st.caption("No tags recorded.")
 
-        st.markdown("**Notable Features**")
+        st.markdown("**Notable features**")
         if getattr(assessment, "llm_features", None):
             for feature in assessment.llm_features:
                 st.markdown(f"- {feature}")
         else:
-            st.caption("None detected")
+            st.caption("None detected.")
 
         st.markdown("---")
 
         # --- LEGAL STATUS ---
         if getattr(assessment, "status_analysis", None):
             status = assessment.status_analysis
-            st.markdown("#### Legal Status")
+            st.markdown("#### Legal status")
             status_flags = []
             if status.is_refused:
-                status_flags.append("🔴 Refused")
+                status_flags.append(("aether-dot--err", "Refused"))
             if status.is_withdrawn:
-                status_flags.append("⚠️ Withdrawn")
+                status_flags.append(("aether-dot--warn", "Withdrawn"))
             if status.is_lapsed:
-                status_flags.append("📉 Lapsed")
+                status_flags.append(("aether-dot--warn", "Lapsed"))
             if status.is_expired:
-                status_flags.append("⏰ Expired")
+                status_flags.append(("aether-dot--muted", "Expired"))
             if status.is_inactive:
-                status_flags.append("⏸️ Inactive")
+                status_flags.append(("aether-dot--muted", "Inactive"))
             if status.is_active:
-                status_flags.append("✅ Active")
+                status_flags.append(("aether-dot--ok", "Active"))
             if status.is_pending:
-                status_flags.append("⏳ Pending")
+                status_flags.append(("aether-dot--warn", "Pending"))
 
             if status_flags:
-                st.markdown(f"**Status:** {' • '.join(status_flags)}")
+                flags_html = "".join(
+                    f'<span class="aether-inline-status"><span class="aether-dot {dot}"></span>{lbl}</span>'
+                    for dot, lbl in status_flags
+                )
+                st.markdown(f'<div style="margin-bottom: 0.45rem;">{flags_html}</div>', unsafe_allow_html=True)
             st.markdown(f"**Jurisdiction:** {status.jurisdiction}")
             if status.code_found:
-                st.markdown(f"**Event Code:** `{status.code_found}`")
+                st.markdown(f"**Event code:** `{status.code_found}`")
 
         st.markdown("---")
 
-        # --- GEORGE'S REVIEW FORM ---
-        st.markdown("#### George's Review")
+        # --- REVIEW FORM ---
+        st.markdown("#### Reviewer assessment")
         existing_review = get_review(assessment.record_id)
         score_key = f"review_score_{assessment.record_id}"
         notes_key = f"review_notes_{assessment.record_id}"
         cal_key = f"review_cal_{assessment.record_id}"
 
         if existing_review is not None:
-            st.success(f"Saved Grade: **{existing_review['user_score']:.0f}/100**")
+            st.success(f"Saved grade: **{existing_review['user_score']:.0f} / 100**")
             default_user_score = round(float(existing_review["user_score"]))
             default_notes = existing_review.get("notes", "")
             default_cal = bool(existing_review.get("use_for_calibration", 1))
         else:
-            st.caption("Not yet reviewed. Keys 0–9 set score (0–90) & focus notes; Enter / Ctrl+S saves.")
+            st.caption("Keys 0-9 set score (0-90) and focus notes · Enter or Ctrl+S saves · Left/Right switches patent.")
             default_user_score = 50
             default_notes = ""
             default_cal = True
 
         user_score = st.slider(
-            "My Score (0–100)",
+            "My Score (0-100)",
             0,
             100,
             default_user_score,
@@ -675,13 +680,12 @@ def _select_patent(record_id: str) -> None:
 
 def render_deep_dive_tab(assessments) -> None:
     if not assessments:
-        st.info("No analysis data available yet.")
+        st.info("No analysis data available yet. Run a search from the sidebar to inspect patents.")
         return
 
     sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
     available_record_ids = [a.record_id for a in sorted_assessments]
 
-    # Sync selector state with any selection made from Search Results or Prev/Next
     selected_from_results = st.session_state.get("selected_record_id_for_analysis")
     if selected_from_results and selected_from_results in available_record_ids:
         st.session_state["analysis_record_selector"] = selected_from_results
@@ -691,10 +695,10 @@ def render_deep_dive_tab(assessments) -> None:
     current_id = st.session_state["analysis_record_selector"]
     current_idx = available_record_ids.index(current_id)
 
-    nav1, nav2, nav3 = st.columns([1.0, 4.2, 1.0], vertical_alignment="center")
+    nav1, nav2, nav3 = st.columns([0.9, 4.4, 0.9], vertical_alignment="center")
     with nav1:
         st.button(
-            "◀ Prev",
+            "Prev",
             disabled=current_idx <= 0,
             width="stretch",
             on_click=_select_patent,
@@ -706,7 +710,7 @@ def render_deep_dive_tab(assessments) -> None:
             options=available_record_ids,
             format_func=lambda x: next(
                 (
-                    f"[{a.relevance_score:.0f}] {a.jurisdiction} {a.doc_number} — {a.title_en or a.title or 'Untitled'}"
+                    f"[{a.relevance_score:.0f}] {a.jurisdiction} {a.doc_number} · {a.title_en or a.title or 'Untitled'}"
                     for a in sorted_assessments
                     if a.record_id == x
                 ),
@@ -718,7 +722,7 @@ def render_deep_dive_tab(assessments) -> None:
         st.session_state["selected_record_id_for_analysis"] = selected_record_id
     with nav3:
         st.button(
-            "Next ▶",
+            "Next",
             disabled=current_idx >= len(available_record_ids) - 1,
             width="stretch",
             on_click=_select_patent,

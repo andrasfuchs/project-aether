@@ -30,7 +30,7 @@ def _status_label(assessment) -> str:
 
 def render_results_tab(assessments, jurisdiction_map):
     if not assessments:
-        st.info("No results yet. Run an analysis to populate the table.")
+        st.info("No results yet. Run a search from the sidebar to populate the results table.")
         return
 
     sorted_assessments = sorted(assessments, key=lambda a: a.relevance_score, reverse=True)
@@ -44,7 +44,7 @@ def render_results_tab(assessments, jurisdiction_map):
         [1.1, 1.3, 1.1, 1.6, 1.2], vertical_alignment="bottom"
     )
     with fcol1:
-        min_score = st.slider("Min Relevance", 0, 100, 0, key="results_min_score")
+        min_score = st.slider("Min relevance", 0, 100, 0, key="results_min_score")
     with fcol2:
         priority_filter = st.multiselect(
             "Priority",
@@ -55,7 +55,7 @@ def render_results_tab(assessments, jurisdiction_map):
     with fcol3:
         all_statuses = sorted({_status_label(a) for a in sorted_assessments})
         status_filter = st.multiselect(
-            "Status",
+            "Legal status",
             all_statuses,
             default=[],
             placeholder="All statuses",
@@ -69,7 +69,7 @@ def render_results_tab(assessments, jurisdiction_map):
         ).strip().lower()
     with fcol5:
         hide_noise = st.checkbox(
-            "Hide reviewed noise (≤30)",
+            "Hide reviewed noise (<= 30)",
             value=False,
             key="results_hide_noise",
         )
@@ -116,13 +116,13 @@ def render_results_tab(assessments, jurisdiction_map):
                 "Relevance Score": round(float(a.relevance_score), 1),
                 "My Score": round(my_score, 1) if my_score is not None else None,
                 "Status": status_disp,
-                "Category": a.domain_category or "—",
+                "Category": a.domain_category or "-",
                 "Notes": (review.get("notes") or "") if review else "",
                 "Link": a.provider_record_url or "",
             }
         )
 
-    st.caption(f"Showing {len(rows)} of {len(sorted_assessments)} patents. Click any row to load it in Detailed Analysis.")
+    st.caption(f"Showing {len(rows)} of {len(sorted_assessments)} patents · Click any row to load it in Detailed Analysis.")
 
     if not rows:
         st.warning("No patents match the active filters.")
@@ -162,7 +162,7 @@ def render_results_tab(assessments, jurisdiction_map):
         st.session_state["selected_record_id_for_analysis"] = selected_record_id
         st.success(
             f"Selected **{selected_record_id}** ({df.iloc[selected_idx]['Patent #']}). "
-            "Open the **Detailed Analysis** tab to inspect, translate, or save George's review."
+            "Open the **Detailed Analysis** tab to inspect, translate, or save your review."
         )
 
     # --- EXPORT ---
@@ -181,7 +181,7 @@ def render_results_tab(assessments, jurisdiction_map):
             my_s = f"{r['My Score']:.0f}/100" if r["My Score"] is not None else "Unreviewed"
             md_lines.append(
                 f"- **[{r['Patent #']}] {r['Title']}** | Relevance: {r['Relevance Score']:.1f} | "
-                f"George: {my_s} | Status: {r['Status']} | {r['Link']}"
+                f"Review: {my_s} | Status: {r['Status']} | {r['Link']}"
             )
         st.download_button(
             "Export Markdown",

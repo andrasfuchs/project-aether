@@ -3,12 +3,14 @@ Project Aether - Patent Intelligence Workbench
 Main Streamlit application entry point.
 """
 
+import html
 import logging
 
 import streamlit as st
 
 from project_aether.agents.analyst import AnalystAgent
 from project_aether.core.config import get_config
+from project_aether.core.keyword_helpers import get_active_english_keywords
 from project_aether.core.keyword_translation import (
     get_history_entries,
     load_keyword_cache,
@@ -186,18 +188,40 @@ def _thinking_select(label: str, state_key: str) -> None:
     st.selectbox(label, options=options, key=state_key)
 
 
-def main() -> None:
-    _init_session_state()
+def _render_masthead(config) -> None:
+    primary = config.normalized_patent_provider
+    secondary = "lens" if primary == "epo" else "epo"
+    labels = {"epo": "EPO OPS", "lens": "Lens"}
+    available = {"epo": config.is_epo_configured, "lens": config.is_lens_configured}
+
+    p_dot = "aether-dot--ok" if available[primary] else "aether-dot--err"
+    s_dot = "aether-dot--ok" if available[secondary] else "aether-dot--warn"
+    g_dot = "aether-dot--ok" if config.is_llm_configured else "aether-dot--warn"
+
+    p_label = html.escape(labels[primary])
+    s_label = html.escape(labels[secondary])
+    g_text = "Gemini ready" if config.is_llm_configured else "Gemini offline"
 
     st.markdown(
-        """
-    <div class="header-container">
-        <div class="main-title">Project Aether</div>
-        <div class="subtitle">Rejected today, revolutionary tomorrow</div>
-    </div>
-    """,
+        f"""
+        <div class="aether-masthead">
+            <div class="aether-brand">
+                <span class="aether-wordmark">Project Aether</span>
+                <span class="aether-tagline">Patent intelligence workbench</span>
+            </div>
+            <div class="aether-status-strip">
+                <span class="aether-status-item"><span class="aether-dot {p_dot}"></span>{p_label}</span>
+                <span class="aether-status-item"><span class="aether-dot {s_dot}"></span>{s_label} fallback</span>
+                <span class="aether-status-item"><span class="aether-dot {g_dot}"></span>{g_text}</span>
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+
+
+def main() -> None:
+    _init_session_state()
 
     (
         config,
@@ -210,6 +234,8 @@ def main() -> None:
         force_refresh,
         run_mission,
     ) = render_sidebar(LANGUAGE_MAP, JURISDICTION_MAP)
+
+    _render_masthead(config)
 
     tab_dashboard, tab_results, tab_analysis, tab_reviews, tab_settings, tab_live_logs = st.tabs(
         [
@@ -272,7 +298,7 @@ def main() -> None:
                         st.rerun()
                 except QuotaExhaustedError:
                     st.error(
-                        "⚠️ **API Quota Exceeded** — Gemini API daily quota exhausted. "
+                        "API quota exceeded: Gemini API daily quota is exhausted. "
                         "Try again later or check https://ai.dev/rate-limit."
                     )
                 except Exception as exc:
@@ -282,9 +308,25 @@ def main() -> None:
             dashboard_state = st.session_state.get("dashboard")
             with dashboard_container.container():
                 if dashboard_state:
-                    render_dashboard_metrics(dashboard_state)
+                    render_dashboard_metrics(
+                        dashboard_state,
+                        assessments=st.session_state.get("assessments"),
+                    )
                 else:
-                    show_placeholder_dashboard()
+                    inc_terms, exc_terms = get_active_english_keywords(
+                        st.session_state.get("keyword_config", {})
+                    )
+                    inc_count = (
+                        sum(len(g) for g in inc_terms)
+                        if inc_terms and isinstance(inc_terms[0], list)
+                        else len(inc_terms)
+                    )
+                    show_placeholder_dashboard(
+                        keyword_set_name=st.session_state.get("keyword_set_name", ""),
+                        include_count=inc_count,
+                        exclude_count=len(exc_terms),
+                        languages=selected_language_names,
+                    )
 
     # --- RESULTS TAB ---
     with tab_results:
@@ -304,11 +346,11 @@ def main() -> None:
 
     # --- SETTINGS TAB ---
     with tab_settings:
-        st.markdown("### Triage Parameters")
-        p1, p2, p3 = st.columns(3, vertical_alignment="bottom")
+        st.markdown("### Triage thresholds")
+        p1, p2, p3 = st.columns(3, vertical_alignment="top")
         with p1:
             st.slider(
-                "Medium Relevance Threshold",
+                "Medium relevance threshold",
                 0,
                 100,
                 key="relevance_threshold",
@@ -316,7 +358,7 @@ def main() -> None:
             )
         with p2:
             st.slider(
-                "High Priority Threshold",
+                "High priority threshold",
                 0,
                 100,
                 key="high_priority_threshold",
@@ -324,38 +366,39 @@ def main() -> None:
             )
         with p3:
             patents_per_language = st.slider(
-                "Patents Per Language (1000 = ∞)",
+                "Max patents per language",
                 1,
                 1000,
                 key="patents_per_language",
+                help="Set to 1000 for unlimited retrieval per language.",
             )
             if patents_per_language >= 1000:
-                st.caption("No limit applied (∞).")
+                st.caption("Unlimited retrieval per language.")
             else:
-                st.caption(f"Limits results to {patents_per_language} patents per language.")
+                st.caption(f"Capped at {patents_per_language} patents per language.")
 
         st.markdown("---")
-        st.markdown("### Gemini 4 Task Configuration")
+        st.markdown("### Model and thinking configuration")
         st.caption(
-            "Default is `gemini-4-hydrogen` with task-tuned thinking levels: `low` for high-volume "
-            "scoring/translation, `medium` for keyword translation & query advisor, and `high` for deep briefs."
+            "Defaults use `gemini-4-hydrogen` with task-tuned thinking levels: `low` for high-volume "
+            "scoring and translation, `medium` for keyword translation and query advice, and `high` for deep briefs."
         )
 
         task_rows = [
-            ("Bulk Patent Scoring", "llm_scoring_model", "llm_scoring_thinking_level"),
-            ("Keyword Translation", "llm_keyword_model", "llm_keyword_thinking_level"),
-            ("Abstract Translation", "llm_translation_model", "llm_translation_thinking_level"),
-            ("Deep Technical Brief", "llm_brief_model", "llm_brief_thinking_level"),
-            ("Query Refinement Advisor", "llm_advisor_model", "llm_advisor_thinking_level"),
+            ("Bulk patent scoring", "llm_scoring_model", "llm_scoring_thinking_level"),
+            ("Keyword translation", "llm_keyword_model", "llm_keyword_thinking_level"),
+            ("Abstract translation", "llm_translation_model", "llm_translation_thinking_level"),
+            ("Deep technical brief", "llm_brief_model", "llm_brief_thinking_level"),
+            ("Query advisor", "llm_advisor_model", "llm_advisor_thinking_level"),
         ]
         for task_label, m_key, t_key in task_rows:
-            c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+            c1, c2 = st.columns([2, 1.15], vertical_alignment="bottom")
             with c1:
-                _model_select(f"{task_label} — Model", m_key)
+                _model_select(f"{task_label} · Model", m_key)
             with c2:
-                _thinking_select(f"{task_label} — Thinking", t_key)
+                _thinking_select(f"{task_label} · Thinking", t_key)
 
-        if st.button("Reset LLM Defaults"):
+        if st.button("Reset LLM defaults"):
             st.session_state["llm_scoring_model"] = config.llm_scoring_model
             st.session_state["llm_scoring_thinking_level"] = config.llm_scoring_thinking_level
             st.session_state["llm_keyword_model"] = config.llm_keyword_model
@@ -370,22 +413,22 @@ def main() -> None:
             st.rerun()
 
         st.markdown("---")
-        st.markdown("### Scoring Prompt & Calibration")
+        st.markdown("### Scoring prompt and calibration")
         st.checkbox(
-            "Inject George's reviewed patents as few-shot calibration examples",
+            "Inject reviewed patents as few-shot calibration examples",
             key="use_calibration_examples",
         )
         st.text_area(
             "Scoring system prompt",
             key="llm_scoring_system_prompt",
-            height=240,
+            height=220,
         )
         st.caption(
             "Placeholders: `{positive_keywords}`, `{negative_keywords}`, and `{calibration_examples}`."
         )
 
         raw_results = st.session_state.get("all_raw_results", [])
-        if raw_results and st.button("Re-score Current Results with Latest Feedback / Settings", type="primary"):
+        if raw_results and st.button("Re-score current results with latest settings", type="primary"):
             try:
                 cal = build_calibration_prompt_block() if st.session_state["use_calibration_examples"] else ""
                 analyst = AnalystAgent(
@@ -411,53 +454,79 @@ def main() -> None:
                 st.error("Gemini API quota exceeded during re-scoring.")
 
         st.markdown("---")
-        st.markdown("### Cache Management (JSON / JSONL)")
+        st.markdown("### Local cache storage")
         s_stats = get_search_cache_stats()
         sc_stats = get_scoring_cache_stats()
         tr_stats = get_translation_cache_stats()
+        s_unit = "file" if s_stats["entries"] == 1 else "files"
+        sc_unit = "entry" if sc_stats["entries"] == 1 else "entries"
+        tr_unit = "entry" if tr_stats["entries"] == 1 else "entries"
         cc1, cc2, cc3 = st.columns(3)
         with cc1:
-            st.metric("Search Cache (per-query JSON)", f"{s_stats['entries']} files")
-            st.caption(f"{s_stats['size_bytes'] / 1024:.1f} KB")
-            if st.button("Clear Search Cache"):
+            st.markdown(
+                f"""
+                <div class="aether-metric-card" style="--card-accent: #475569;">
+                    <div class="aether-metric-label">Search cache</div>
+                    <div class="aether-metric-value">{s_stats['entries']:,}</div>
+                    <div class="aether-metric-sub">{s_unit} · {s_stats['size_bytes'] / 1024:.1f} KB · JSON</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Clear search cache", width="stretch"):
                 removed = clear_search_cache()
                 st.success(f"Removed {removed} search cache file(s).")
         with cc2:
-            st.metric("Scoring Cache (JSONL)", f"{sc_stats['entries']} entries")
-            st.caption(f"{sc_stats['size_bytes'] / 1024:.1f} KB")
-            if st.button("Clear Scoring Cache"):
+            st.markdown(
+                f"""
+                <div class="aether-metric-card" style="--card-accent: #2563EB;">
+                    <div class="aether-metric-label">Scoring cache</div>
+                    <div class="aether-metric-value">{sc_stats['entries']:,}</div>
+                    <div class="aether-metric-sub">{sc_unit} · {sc_stats['size_bytes'] / 1024:.1f} KB · JSONL</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Clear scoring cache", width="stretch"):
                 removed = clear_scoring_cache()
                 st.success(f"Cleared {removed} scoring cache entry/entries.")
         with cc3:
-            st.metric("Translation Cache (JSONL)", f"{tr_stats['entries']} entries")
-            st.caption(f"{tr_stats['size_bytes'] / 1024:.1f} KB")
-            if st.button("Clear Translation Cache"):
+            st.markdown(
+                f"""
+                <div class="aether-metric-card" style="--card-accent: #059669;">
+                    <div class="aether-metric-label">Translation cache</div>
+                    <div class="aether-metric-value">{tr_stats['entries']:,}</div>
+                    <div class="aether-metric-sub">{tr_unit} · {tr_stats['size_bytes'] / 1024:.1f} KB · JSONL</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if st.button("Clear translation cache", width="stretch"):
                 removed = clear_translation_cache()
                 st.success(f"Cleared {removed} translation cache entry/entries.")
 
         st.markdown("---")
-        st.markdown("### Search Diagnostics")
-        diagnostics = st.session_state.get("search_diagnostics", [])
-        if diagnostics:
-            st.json(diagnostics)
-        else:
-            st.caption("No search diagnostics available yet. Run a search to populate this panel.")
+        with st.expander("Search diagnostics", expanded=False):
+            diagnostics = st.session_state.get("search_diagnostics", [])
+            if diagnostics:
+                st.json(diagnostics)
+            else:
+                st.caption("No search diagnostics available yet. Run a search to populate this panel.")
 
-        st.markdown("---")
-        st.markdown("### INPADOC Status Codes")
-        jurisdictions = list(INPADOC_CODES.keys())
-        if jurisdictions:
-            jur_tabs = st.tabs(jurisdictions)
-            for jur, tab in zip(jurisdictions, jur_tabs):
-                with tab:
-                    codes = INPADOC_CODES[jur]
-                    for code, details in codes.items():
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            st.markdown(f"**{code}**")
-                        with col2:
-                            st.markdown(f"{details['description']}")
-                            st.caption(f"*Severity: {details['severity'].value}*")
+        with st.expander("INPADOC status codes reference", expanded=False):
+            jurisdictions = list(INPADOC_CODES.keys())
+            if jurisdictions:
+                jur_tabs = st.tabs(jurisdictions)
+                for jur, tab in zip(jurisdictions, jur_tabs):
+                    with tab:
+                        codes = INPADOC_CODES[jur]
+                        for code, details in codes.items():
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                st.markdown(f"`{code}`")
+                            with col2:
+                                st.markdown(f"{details['description']}")
+                                st.caption(f"Severity: {details['severity'].value}")
 
 
 if __name__ == "__main__":

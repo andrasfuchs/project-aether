@@ -8,9 +8,9 @@ LOG_LEVEL_OPTIONS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 def render_live_logs_tab() -> None:
-    """Render a live log stream panel for production diagnostics."""
-    st.markdown("### Live Log Stream")
-    st.caption("Tail the in-process runtime logs captured by the server worker.")
+    """Render a live log stream panel for runtime diagnostics."""
+    st.markdown("### Runtime logs")
+    st.caption("Tail the in-process worker logs with level and substring filters.")
 
     handler = get_log_stream_handler()
     if handler is None:
@@ -44,14 +44,14 @@ def render_live_logs_tab() -> None:
         [1, 1, 1.3, 2.7], vertical_alignment="bottom"
     )
     with action_col1:
-        refresh_clicked = st.button("Refresh", key="live_logs_refresh")
+        refresh_clicked = st.button("Refresh", key="live_logs_refresh", width="stretch")
     with action_col2:
-        clear_clicked = st.button("Clear", key="live_logs_clear")
+        clear_clicked = st.button("Clear", key="live_logs_clear", width="stretch")
     with action_col3:
         auto_refresh = st.toggle("Auto refresh", value=True, key="live_logs_auto_refresh")
     with action_col4:
         refresh_seconds = st.selectbox(
-            "Refresh interval",
+            "Refresh interval (seconds)",
             [1, 2, 5, 10],
             index=1,
             key="live_logs_refresh_seconds",
@@ -73,7 +73,7 @@ def render_live_logs_tab() -> None:
         )
         total_entries = handler.total_entries()
         st.caption(
-            f"Showing {len(entries)} line(s) | Total buffered: {total_entries} | Level: {selected_level}+"
+            f"Showing {len(entries)} line(s) · Total buffered: {total_entries} · Level: {selected_level}+"
         )
         if not entries:
             st.info("No log lines match the current filters.")
